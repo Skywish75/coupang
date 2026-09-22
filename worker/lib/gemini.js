@@ -1,4 +1,9 @@
-const MODEL_FALLBACK = 'gemini-2.5-flash';
+// gemini-2.0-flash is on the free (no billing required) tier as of this
+// writing. Newer/heavier models (e.g. gemini-2.5-flash) may require a
+// billing-enabled project even at low usage — if this keeps hitting 402s,
+// check https://ai.google.dev/gemini-api/docs/pricing for which models
+// currently show a free tier and set GEMINI_MODEL in wrangler.toml to match.
+const MODEL_FALLBACK = 'gemini-2.0-flash';
 
 // Generates a Korean review-style markdown body for one product.
 // Returns plain markdown (no frontmatter, no heading).

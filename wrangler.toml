@@ -9,6 +9,9 @@ binding = "ASSETS"
 [vars]
 GITHUB_REPO = "Skywish75/coupang"
 GITHUB_BRANCH = "main"
+# 402(prepayment credits depleted)가 계속 나면 무료 티어에 포함된 다른 모델명으로 교체
+# (https://ai.google.dev/gemini-api/docs/pricing 에서 Free tier 표시 확인)
+GEMINI_MODEL = "gemini-2.0-flash"
 
 # 매일 00:00 UTC(=한국시간 09:00)에 자동 발행 1건 실행. cron 표현식은 필요에 맞게 조정.
 [triggers]
