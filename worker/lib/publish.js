@@ -16,7 +16,7 @@ function toFrontmatterString(value) {
 }
 
 async function pickUnpostedProduct(env, topic) {
-  const products = await searchProducts(env, topic, 20);
+  const products = await searchProducts(env, topic, 10);
   for (const product of products) {
     if (!(await isAlreadyPosted(env, String(product.productId)))) {
       return product;

@@ -22,7 +22,7 @@ async function authHeader(env, method, path, query = '') {
   return `CEA algorithm=HmacSHA256, access-key=${env.COUPANG_ACCESS_KEY}, signed-date=${date}, signature=${signature}`;
 }
 
-export async function searchProducts(env, keyword, limit = 20) {
+export async function searchProducts(env, keyword, limit = 10) {
   const path = '/v2/providers/affiliate_open_api/apis/openapi/products/search';
   const query = `keyword=${encodeURIComponent(keyword)}&limit=${limit}`;
   const authorization = await authHeader(env, 'GET', path, query);
