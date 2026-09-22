@@ -36,7 +36,11 @@ export async function searchProducts(env, keyword, limit = 20) {
   }
 
   const json = await res.json();
-  return json.data?.productData ?? [];
+  // TEMP DEBUG: log the raw shape so we can confirm the correct field path
+  // for the product list once a real response comes back. Remove once
+  // parsing below is confirmed correct.
+  console.log('coupang search raw response:', JSON.stringify(json).slice(0, 2000));
+  return json.data?.productData ?? json.rData?.productData ?? json.data ?? [];
 }
 
 // Converts a Coupang product URL into the caller's own affiliate deep link.
