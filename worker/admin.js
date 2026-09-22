@@ -1,4 +1,4 @@
-import { getTopics, setTopics, getLogs } from './lib/state.js';
+import { getTopics, setTopics, getLogs, addLog } from './lib/state.js';
 import { runAutoPublish } from './lib/publish.js';
 
 function escapeHtml(str) {
@@ -119,6 +119,7 @@ export async function handleAdmin(request, env) {
       );
       return new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
     } catch (err) {
+      await addLog(env, { status: 'error', reason: err.message });
       const html = await renderPage(env, `실행 실패: ${err.message}`);
       return new Response(html, { status: 500, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
     }
