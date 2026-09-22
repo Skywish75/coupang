@@ -18,4 +18,4 @@ crons = ["0 0 * * *"]
 # 아래 id를 실제 값으로 교체하세요. (README의 설정 체크리스트 참고)
 [[kv_namespaces]]
 binding = "STATE"
-id = "REPLACE_WITH_KV_NAMESPACE_ID"
+id = "e62091f95fcb420d9ace3dcda7f132b0"
