@@ -1,0 +1,18 @@
+---
+interface Props {
+  slug: string;
+  title: string;
+  price?: string;
+  description?: string;
+}
+
+const { slug, title, price, description } = Astro.props;
+---
+<div class="product-card">
+  <h3>{title}</h3>
+  {price && <p class="price">{price}</p>}
+  {description && <p>{description}</p>}
+  <a class="btn-coupang" href={`/go/${slug}`} rel="sponsored nofollow noopener" target="_blank">
+    쿠팡에서 보기
+  </a>
+</div>

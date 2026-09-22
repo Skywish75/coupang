@@ -1,0 +1,24 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { getCollection } from 'astro:content';
+
+const posts = (await getCollection('blog')).sort(
+  (a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf()
+).slice(0, 5);
+---
+<BaseLayout
+  title="7mall.kr - 리뷰 & 추천"
+  description="꼼꼼한 리뷰와 추천으로 합리적인 소비를 돕는 7mall.kr입니다."
+>
+  <h1>7mall.kr</h1>
+  <p>실사용 후기를 바탕으로 한 제품 리뷰와 추천 글을 올립니다.</p>
+
+  <h2>최신 글</h2>
+  {posts.map((post) => (
+    <article class="post-list-item">
+      <h2><a href={`/blog/${post.slug}`}>{post.data.title}</a></h2>
+      <p class="post-meta">{post.data.pubDate.toLocaleDateString('ko-KR')}</p>
+      <p>{post.data.description}</p>
+    </article>
+  ))}
+</BaseLayout>
