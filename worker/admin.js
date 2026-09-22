@@ -73,13 +73,37 @@ async function renderPage(env, notice) {
 </html>`;
 }
 
+// Simple HTTP Basic Auth in front of /admin, checked against the
+// ADMIN_USERNAME / ADMIN_PASSWORD secrets. No Cloudflare Access / Zero
+// Trust subscription required.
+function isAuthorized(request, env) {
+  const header = request.headers.get('Authorization');
+  if (!header || !header.startsWith('Basic ')) {
+    return false;
+  }
+  const decoded = atob(header.slice('Basic '.length));
+  const separatorIndex = decoded.indexOf(':');
+  const username = decoded.slice(0, separatorIndex);
+  const password = decoded.slice(separatorIndex + 1);
+  return username === env.ADMIN_USERNAME && password === env.ADMIN_PASSWORD;
+}
+
+function unauthorizedResponse() {
+  return new Response('Authentication required', {
+    status: 401,
+    headers: { 'WWW-Authenticate': 'Basic realm="7mall admin"' },
+  });
+}
+
 export async function handleAdmin(request, env) {
-  const authenticatedEmail = request.headers.get('Cf-Access-Authenticated-User-Email');
-  if (!authenticatedEmail) {
+  if (!env.ADMIN_USERNAME || !env.ADMIN_PASSWORD) {
     return new Response(
-      'Forbidden: 이 경로는 Cloudflare Access 뒤에서만 접근 가능합니다. Zero Trust에서 Access 애플리케이션을 먼저 설정하세요.',
+      'Forbidden: ADMIN_USERNAME / ADMIN_PASSWORD secret이 설정되지 않았습니다.',
       { status: 403 }
     );
+  }
+  if (!isAuthorized(request, env)) {
+    return unauthorizedResponse();
   }
 
   const url = new URL(request.url);

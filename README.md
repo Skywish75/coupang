@@ -67,17 +67,19 @@ Cloudflare Workers Build를 자동 트리거해서 몇 분 내 사이트에 반�
 
 ### 설정 체크리스트 (모두 Cloudflare/GitHub 계정에서 직접 하셔야 합니다)
 
-**1. Cloudflare Access로 `/admin` 보호**
-   - Cloudflare 대시보드 → Zero Trust → Access → Applications → "Add an application" → Self-hosted
-   - Application domain: `coupang.tclee.workers.dev` (또는 연결한 커스텀 도메인), Path: `/admin*`
-   - Policy: 본인 이메일만 허용하도록 설정
-   - 이 설정 전에는 `worker/admin.js`가 `Cf-Access-Authenticated-User-Email` 헤더 유무로 403을 반환해 최소한의 안전장치는 있지만, 실제 로그인 화면은 Access가 붙어야 나타납니다.
+**1. `/admin` 로그인 비밀번호 설정 (Basic Auth, 무료)**
+   - Cloudflare Zero Trust Access는 결제 정보 등록을 요구할 수 있어, 대신 Worker 자체에 아이디/비밀번호 로그인을 내장했습니다 (추가 비용 없음).
+   - 아래 시크릿을 등록하면 `/admin` 접속 시 브라우저 기본 로그인 창이 뜹니다.
+   ```bash
+   wrangler secret put ADMIN_USERNAME
+   wrangler secret put ADMIN_PASSWORD
+   ```
 
 **2. KV 네임스페이스 생성** (키워드 목록/로그/중복방지 저장용)
    - Cloudflare 대시보드 → Storage & Databases → KV → Create a namespace (이름 예: `coupang-state`)
    - 생성된 namespace id를 [wrangler.toml](wrangler.toml)의 `REPLACE_WITH_KV_NAMESPACE_ID`에 넣고 커밋/푸시
 
-**3. Secrets 등록** (Cloudflare 대시보드 → Workers & Pages → coupang → 설정 → Variables and Secrets, 또는 아래 CLI)
+**3. 나머지 Secrets 등록** (Cloudflare 대시보드 → Workers & Pages → coupang → 설정 → Variables and Secrets, 또는 아래 CLI)
    ```bash
    wrangler secret put COUPANG_ACCESS_KEY
    wrangler secret put COUPANG_SECRET_KEY
