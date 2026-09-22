@@ -22,7 +22,12 @@ async function ghFetch(env, path, options = {}) {
 export async function getFileContent(env, path) {
   const branch = env.GITHUB_BRANCH || 'main';
   const data = await ghFetch(env, `/repos/${env.GITHUB_REPO}/contents/${path}?ref=${branch}`);
-  return atob(data.content.replace(/\n/g, ''));
+  // atob() only maps base64 -> one JS char per byte (Latin-1), which mangles
+  // any multi-byte UTF-8 content (e.g. Korean text). Decode the raw bytes as
+  // UTF-8 explicitly instead.
+  const binary = atob(data.content.replace(/\n/g, ''));
+  const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0));
+  return new TextDecoder('utf-8').decode(bytes);
 }
 
 // Commits one or more files in a single atomic commit via the Git Data API,

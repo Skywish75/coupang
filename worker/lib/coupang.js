@@ -62,5 +62,17 @@ export async function createDeeplink(env, coupangUrl) {
   }
 
   const json = await res.json();
-  return json.data?.[0]?.shortenUrl ?? json.data?.[0]?.landingUrl;
+  console.log('coupang deeplink raw response:', JSON.stringify(json).slice(0, 1000));
+
+  // Coupang's response shape for `data` has been inconsistent across
+  // endpoints (an array of results for some, a single object for others) —
+  // handle both instead of assuming one.
+  const entry = Array.isArray(json.data) ? json.data[0] : json.data;
+  const link = entry?.shortenUrl ?? entry?.landingUrl;
+
+  if (!link) {
+    throw new Error(`Coupang deeplink response had no usable URL: ${JSON.stringify(json)}`);
+  }
+
+  return link;
 }
