@@ -11,13 +11,13 @@ function signedDate() {
   )}${pad(d.getUTCSeconds())}Z`;
 }
 
-// Coupang's HMAC scheme: message = signedDate + method + path(+query).
-// Verify this against the current Open API docs (partners.coupang.com) if
-// requests start failing with 401 — the exact canonicalization has changed
-// across doc revisions in the past.
-async function authHeader(env, method, pathWithQuery) {
+// Coupang's HMAC scheme: message = signedDate + method + path + query,
+// where `query` is the query string WITHOUT a leading "?". Including the
+// "?" in the signed message (as an earlier version of this file did)
+// produces a signature Coupang rejects with HmacSignatureMismatchedException.
+async function authHeader(env, method, path, query = '') {
   const date = signedDate();
-  const message = date + method + pathWithQuery;
+  const message = date + method + path + query;
   const signature = await hmacSha256Hex(env.COUPANG_SECRET_KEY, message);
   return `CEA algorithm=HmacSHA256, access-key=${env.COUPANG_ACCESS_KEY}, signed-date=${date}, signature=${signature}`;
 }
@@ -25,7 +25,7 @@ async function authHeader(env, method, pathWithQuery) {
 export async function searchProducts(env, keyword, limit = 20) {
   const path = '/v2/providers/affiliate_open_api/apis/openapi/products/search';
   const query = `keyword=${encodeURIComponent(keyword)}&limit=${limit}`;
-  const authorization = await authHeader(env, 'GET', `${path}?${query}`);
+  const authorization = await authHeader(env, 'GET', path, query);
 
   const res = await fetch(`${API_HOST}${path}?${query}`, {
     headers: { Authorization: authorization },
