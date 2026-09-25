@@ -16,7 +16,11 @@ export default {
 
     const match = url.pathname.match(/^\/go\/([^/]+)\/?$/);
     if (match) {
-      const entry = links[match[1]];
+      // url.pathname keeps non-ASCII slug segments percent-encoded (e.g.
+      // Korean product slugs come back as %ED%95%98...), so decode before
+      // looking the key up in the affiliate link map.
+      const slug = decodeURIComponent(match[1]);
+      const entry = links[slug];
       if (!entry) {
         return new Response('Link not found', { status: 404 });
       }
