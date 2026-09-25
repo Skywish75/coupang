@@ -36,43 +36,10 @@ export async function searchProducts(env, keyword, limit = 10) {
   }
 
   const json = await res.json();
-  // TEMP DEBUG: log the raw shape so we can confirm the correct field path
-  // for the product list once a real response comes back. Remove once
-  // parsing below is confirmed correct.
-  console.log('coupang search raw response:', JSON.stringify(json).slice(0, 2000));
-  return json.data?.productData ?? json.rData?.productData ?? json.data ?? [];
+  return json.data?.productData ?? [];
 }
 
-// Converts a Coupang product URL into the caller's own affiliate deep link.
-export async function createDeeplink(env, coupangUrl) {
-  const path = '/v2/providers/affiliate_open_api/apis/openapi/v1/deeplink';
-  const authorization = await authHeader(env, 'POST', path);
-
-  const res = await fetch(`${API_HOST}${path}`, {
-    method: 'POST',
-    headers: {
-      Authorization: authorization,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ coupangUrls: [coupangUrl] }),
-  });
-
-  if (!res.ok) {
-    throw new Error(`Coupang deeplink failed (${res.status}): ${await res.text()}`);
-  }
-
-  const json = await res.json();
-  console.log('coupang deeplink raw response:', JSON.stringify(json).slice(0, 1000));
-
-  // Coupang's response shape for `data` has been inconsistent across
-  // endpoints (an array of results for some, a single object for others) —
-  // handle both instead of assuming one.
-  const entry = Array.isArray(json.data) ? json.data[0] : json.data;
-  const link = entry?.shortenUrl ?? entry?.landingUrl;
-
-  if (!link) {
-    throw new Error(`Coupang deeplink response had no usable URL: ${JSON.stringify(json)}`);
-  }
-
-  return link;
-}
+// Note: products from searchProducts() already carry our own affiliate tag
+// in productUrl (see publish.js), so there's normally no need for a
+// separate deeplink-conversion call — Coupang's deeplink endpoint rejects
+// already-tagged URLs with "url convert failed" if you try.

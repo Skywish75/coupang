@@ -1,4 +1,4 @@
-import { searchProducts, createDeeplink } from './coupang.js';
+import { searchProducts } from './coupang.js';
 import { generateArticle } from './gemini.js';
 import { getFileContent, commitFiles } from './github.js';
 import { getNextTopic, isAlreadyPosted, markPosted, addLog } from './state.js';
@@ -38,7 +38,11 @@ export async function runAutoPublish(env) {
     return { status: 'skipped', topic };
   }
 
-  const deeplink = await createDeeplink(env, selected.productUrl);
+  // Products returned by the authenticated search API already carry our
+  // own affiliate tag (lptag=...) in productUrl, so they work as-is —
+  // running them back through the deeplink-conversion endpoint rejects
+  // them with "url convert failed".
+  const affiliateUrl = selected.productUrl;
   const body = await generateArticle(env, selected, topic);
 
   const today = new Date().toISOString().slice(0, 10);
@@ -65,7 +69,7 @@ export async function runAutoPublish(env) {
 
   const linksRaw = await getFileContent(env, 'data/affiliateLinks.json');
   const links = JSON.parse(linksRaw);
-  links[productSlug] = { url: deeplink, name: selected.productName };
+  links[productSlug] = { url: affiliateUrl, name: selected.productName };
 
   await commitFiles(env, {
     message: `chore: auto-publish post for "${topic}" (${selected.productName})`,
