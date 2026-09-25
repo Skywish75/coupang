@@ -61,6 +61,7 @@ export async function runAutoPublish(env) {
     `    title: "${toFrontmatterString(selected.productName)}"`,
     `    price: "${Number(selected.productPrice).toLocaleString('ko-KR')}원"`,
     `    description: "${toFrontmatterString(topic)} 카테고리 추천 상품"`,
+    `    image: "${toFrontmatterString(selected.productImage)}"`,
     '---',
     '',
   ].join('\n');

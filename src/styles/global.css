@@ -84,6 +84,14 @@ h1, h2, h3 {
   margin: 1.5rem 0;
 }
 
+.product-card img {
+  width: 100%;
+  max-width: 320px;
+  height: auto;
+  border-radius: 8px;
+  margin-bottom: 0.75rem;
+}
+
 .product-card h3 {
   margin: 0 0 0.5rem;
 }

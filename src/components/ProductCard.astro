@@ -4,11 +4,13 @@ interface Props {
   title: string;
   price?: string;
   description?: string;
+  image?: string;
 }
 
-const { slug, title, price, description } = Astro.props;
+const { slug, title, price, description, image } = Astro.props;
 ---
 <div class="product-card">
+  {image && <img src={image} alt={title} loading="lazy" />}
   <h3>{title}</h3>
   {price && <p class="price">{price}</p>}
   {description && <p>{description}</p>}
