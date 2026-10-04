@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://7mall.kr/sitemap-index.xml
+Sitemap: https://coupang.tclee.workers.dev/sitemap-index.xml

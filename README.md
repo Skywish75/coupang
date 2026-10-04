@@ -45,6 +45,7 @@ wrangler deploy
 1. Cloudflare 대시보드에 7mall.kr 도메인 추가
 2. 도메인 등록기관(가비아 등)에서 네임서버를 Cloudflare가 안내하는 값으로 변경
 3. Worker 프로젝트(coupang) 설정 → 도메인 → Custom domains에서 7mall.kr 추가
+4. `astro.config.mjs`의 `site`와 `public/robots.txt`의 `Sitemap` 주소를 `https://7mall.kr`로 변경 후 재배포 (canonical·사이트맵이 이 값을 따른다)
 
 ## 법적 고지 체크리스트
 
