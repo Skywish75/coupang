@@ -19,15 +19,27 @@ async function ghFetch(env, path, options = {}) {
   return res.json();
 }
 
+// Returns the file as UTF-8 text, or null if it doesn't exist on the branch.
+// The raw media type skips base64 entirely (and its 1MB limit on the JSON
+// contents response), so multi-byte Korean text comes back intact.
 export async function getFileContent(env, path) {
   const branch = env.GITHUB_BRANCH || 'main';
-  const data = await ghFetch(env, `/repos/${env.GITHUB_REPO}/contents/${path}?ref=${branch}`);
-  // atob() only maps base64 -> one JS char per byte (Latin-1), which mangles
-  // any multi-byte UTF-8 content (e.g. Korean text). Decode the raw bytes as
-  // UTF-8 explicitly instead.
-  const binary = atob(data.content.replace(/\n/g, ''));
-  const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0));
-  return new TextDecoder('utf-8').decode(bytes);
+  const apiPath = `/repos/${env.GITHUB_REPO}/contents/${path}?ref=${branch}`;
+  const res = await fetch(`${API_HOST}${apiPath}`, {
+    headers: { ...ghHeaders(env), Accept: 'application/vnd.github.raw' },
+  });
+  if (res.status === 404) {
+    return null;
+  }
+  if (!res.ok) {
+    throw new Error(`GitHub API ${apiPath} failed (${res.status}): ${await res.text()}`);
+  }
+  return res.text();
+}
+
+export async function getJsonFile(env, path, fallback) {
+  const raw = await getFileContent(env, path);
+  return raw === null ? fallback : JSON.parse(raw);
 }
 
 // Commits one or more files in a single atomic commit via the Git Data API,

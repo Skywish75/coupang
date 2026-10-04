@@ -1,8 +1,12 @@
 ---
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import AffiliateDisclosure from '../../components/AffiliateDisclosure.astro';
+import AiNotice from '../../components/AiNotice.astro';
 import ProductCard from '../../components/ProductCard.astro';
+import PriceHistory from '../../components/PriceHistory.astro';
 import { getCollection } from 'astro:content';
+import { getPriceStats, productIdFromSlug, formatWon, formatDate } from '../../lib/prices';
+import { getComparisonForTopic } from '../../lib/compare';
 
 export async function getStaticPaths() {
   const posts = await getCollection('blog');
@@ -14,6 +18,20 @@ export async function getStaticPaths() {
 
 const { post } = Astro.props;
 const { Content } = await post.render();
+
+const products = post.data.products.map((product) => {
+  const productId = product.productId ?? productIdFromSlug(product.slug);
+  const stats = getPriceStats(productId);
+  return {
+    ...product,
+    productId,
+    // Prefer the latest tracked price over the one frozen at publish time.
+    price: stats ? formatWon(stats.current) : product.price,
+    priceLabel: stats ? `${formatDate(stats.currentDate)} 기준` : product.price && '게시일 기준',
+  };
+});
+
+const comparison = post.data.tags.map(getComparisonForTopic).find(Boolean);
 ---
 <BaseLayout title={post.data.title} description={post.data.description}>
   <article>
@@ -21,17 +39,28 @@ const { Content } = await post.render();
     <p class="post-meta">{post.data.pubDate.toLocaleDateString('ko-KR')}</p>
 
     {post.data.hasAffiliateLinks && <AffiliateDisclosure />}
+    {post.data.aiAssisted && <AiNotice />}
 
     <Content />
 
-    {post.data.products.map((product) => (
-      <ProductCard
-        slug={product.slug}
-        title={product.title}
-        price={product.price}
-        description={product.description}
-        image={product.image}
-      />
+    {products.map((product) => (
+      <>
+        <ProductCard
+          slug={product.slug}
+          title={product.title}
+          price={product.price}
+          priceLabel={product.priceLabel}
+          description={product.description}
+          image={product.image}
+        />
+        <PriceHistory productId={product.productId} />
+      </>
     ))}
+
+    {comparison && (
+      <p class="related-compare">
+        <a href={`/compare/${comparison.slug}/`}>{comparison.topic} 인기 상품 TOP {comparison.products.length} 가격 비교 보기 →</a>
+      </p>
+    )}
   </article>
 </BaseLayout>

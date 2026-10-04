@@ -1,0 +1,71 @@
+---
+import { getPriceStats, formatWon, formatDate } from '../lib/prices';
+
+interface Props {
+  productId?: string;
+}
+
+const stats = getPriceStats(Astro.props.productId);
+
+// Sparkline geometry: x follows the real date gaps, y spans min..max.
+const W = 320;
+const H = 72;
+const PAD = 6;
+let points = '';
+let last: { x: number; y: number } | null = null;
+if (stats && stats.series.length >= 2) {
+  const t = (d: string) => new Date(`${d}T00:00:00Z`).getTime();
+  const t0 = t(stats.series[0][0]);
+  const span = Math.max(t(stats.currentDate) - t0, 1);
+  const range = stats.max - stats.min;
+  const xy = stats.series.map(([d, p]) => ({
+    x: PAD + ((t(d) - t0) / span) * (W - PAD * 2),
+    y: range === 0 ? H / 2 : PAD + (1 - (p - stats.min) / range) * (H - PAD * 2),
+  }));
+  points = xy.map(({ x, y }) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
+  last = xy[xy.length - 1];
+}
+---
+{stats && (
+  <section class="price-box" aria-labelledby={`price-${Astro.props.productId}`}>
+    <h2 id={`price-${Astro.props.productId}`}>가격 정보</h2>
+    <dl class="price-stats">
+      <div>
+        <dt>현재가</dt>
+        <dd>{formatWon(stats.current)}</dd>
+      </div>
+      {stats.count >= 2 && (
+        <>
+          <div>
+            <dt>30일 최저가</dt>
+            <dd>{formatWon(stats.min)}</dd>
+          </div>
+          <div>
+            <dt>30일 평균가</dt>
+            <dd>{formatWon(stats.avg)}</dd>
+          </div>
+          <div>
+            <dt>30일 최고가</dt>
+            <dd>{formatWon(stats.max)}</dd>
+          </div>
+        </>
+      )}
+    </dl>
+
+    {stats.verdict && <p class="price-verdict" data-tone={stats.verdict.tone}>{stats.verdict.label}</p>}
+
+    {points && last && (
+      <svg class="price-chart" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`최근 30일 가격 추이: 최저 ${formatWon(stats.min)}, 최고 ${formatWon(stats.max)}`}>
+        <polyline points={points} fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" />
+        <circle cx={last.x} cy={last.y} r="3.5" fill="currentColor" />
+      </svg>
+    )}
+
+    <p class="price-note">
+      {stats.count < 3
+        ? `가격 기록을 모으는 중이에요 (${stats.count}일치). 매일 기록이 쌓이면 최저가·평균가와 비교해 드려요. `
+        : `최근 30일 중 ${stats.count}일의 기록 기준입니다. `}
+      {formatDate(stats.currentDate)} 쿠팡 판매가 기준이며, 할인·쿠폰에 따라 실제 결제 금액은 다를 수 있어요.
+    </p>
+  </section>
+)}

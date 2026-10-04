@@ -1,0 +1,115 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import AffiliateDisclosure from '../../components/AffiliateDisclosure.astro';
+import AiNotice from '../../components/AiNotice.astro';
+import { getCollection } from 'astro:content';
+import { getComparisons, type Comparison } from '../../lib/compare';
+import { getPriceStats, formatWon, formatDate } from '../../lib/prices';
+
+export function getStaticPaths() {
+  return getComparisons().map((comparison) => ({
+    params: { topic: comparison.slug },
+    props: { comparison },
+  }));
+}
+
+const { comparison } = Astro.props as { comparison: Comparison };
+const { topic, updatedAt } = comparison;
+const n = comparison.products.length;
+const [year, month] = updatedAt.split('-').map(Number);
+
+const rows = comparison.products.map((p) => ({ ...p, stats: getPriceStats(p.productId) }));
+
+const guide = (await getCollection('guides')).find((g) => g.data.topic === topic);
+const GuideContent = guide ? (await guide.render()).Content : null;
+
+const relatedPosts = (await getCollection('blog', (post) => post.data.tags.includes(topic)))
+  .sort((a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf())
+  .slice(0, 5);
+---
+<BaseLayout
+  title={`${topic} 인기 상품 TOP ${n} 가격 비교 (${year}년 ${month}월)`}
+  description={`쿠팡 ${topic} 인기 상품 ${n}개의 현재가, 최근 30일 최저가, 배송 조건을 한눈에 비교합니다.`}
+>
+  <article>
+    <h1>{topic} 인기 상품 TOP {n} 가격 비교</h1>
+    <p class="post-meta">{formatDate(updatedAt)} 업데이트 · 매일 오전 9시 자동 갱신</p>
+
+    <AffiliateDisclosure />
+
+    <p>
+      쿠팡에서 "{topic}"(으)로 검색했을 때 상위에 나온 상품 {n}개의 가격과 배송 조건을 모았습니다.
+      순위는 쿠팡 검색 결과 순서이며, 이 사이트가 매긴 평가가 아닙니다.
+    </p>
+
+    <div class="table-wrap">
+      <table class="compare-table">
+        <thead>
+          <tr>
+            <th scope="col">순위</th>
+            <th scope="col">상품</th>
+            <th scope="col">현재가</th>
+            <th scope="col">30일 최저가</th>
+            <th scope="col">배송</th>
+            <th scope="col"><span class="visually-hidden">링크</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((p) => (
+            <tr>
+              <td class="rank">{p.rank}</td>
+              <td class="product-cell">
+                <div class="compare-product">
+                  {p.image && <img src={p.image} alt="" width="48" height="48" loading="lazy" />}
+                  <span>{p.name}</span>
+                </div>
+              </td>
+              <td class="num price-cell" data-label="현재가">{formatWon(p.price)}</td>
+              <td class="num low-cell" data-label="30일 최저가">
+                {p.stats && p.stats.count >= 2 ? (
+                  <>
+                    {formatWon(p.stats.min)}
+                    {p.stats.max > p.stats.min && p.stats.current <= p.stats.min && <span class="badge">최저가</span>}
+                  </>
+                ) : (
+                  <span class="muted">기록 중</span>
+                )}
+              </td>
+              <td class="ship-cell">
+                {[p.isRocket && '로켓배송', p.isFreeShipping && '무료배송'].filter(Boolean).join(' · ') || '-'}
+              </td>
+              <td class="link-cell">
+                <a class="btn-coupang btn-small" href={`/go/${p.slug}`} rel="sponsored nofollow noopener" target="_blank">
+                  보기
+                </a>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+    <p class="price-note">
+      가격은 {formatDate(updatedAt)} 쿠팡 판매가 기준이며, 할인·쿠폰에 따라 실제 결제 금액은 다를 수 있어요.
+      "30일 최저가"는 이 사이트가 매일 기록한 가격 중 최저값입니다.
+    </p>
+
+    {GuideContent && (
+      <section>
+        <h2>{topic} 고르는 법</h2>
+        <AiNotice kind="guide" />
+        <GuideContent />
+      </section>
+    )}
+
+    {relatedPosts.length > 0 && (
+      <section>
+        <h2>{topic} 상품 정리 글</h2>
+        <ul class="related-list">
+          {relatedPosts.map((post) => (
+            <li><a href={`/blog/${post.slug}`}>{post.data.title}</a></li>
+          ))}
+        </ul>
+      </section>
+    )}
+  </article>
+</BaseLayout>

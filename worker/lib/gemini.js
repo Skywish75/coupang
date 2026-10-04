@@ -5,41 +5,82 @@
 // currently show a free tier and set GEMINI_MODEL in wrangler.toml to match.
 const MODEL_FALLBACK = 'gemini-3.6-flash';
 
-// Generates a Korean review-style markdown body for one product.
-// Returns plain markdown (no frontmatter, no heading).
-export async function generateArticle(env, product, topic) {
+// 503 "high demand" and 429 are usually transient; a couple of spaced-out
+// retries recover most of the runs that used to fail outright.
+const MAX_RETRIES = 2;
+const RETRY_DELAY_MS = 5000;
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function callGemini(env, prompt) {
   const model = env.GEMINI_MODEL || MODEL_FALLBACK;
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${env.GEMINI_API_KEY}`;
 
-  const prompt = `당신은 쿠팡파트너스 제휴 마케팅 콘텐츠를 작성하는 한국어 카피라이터입니다.
-아래 상품 정보를 바탕으로, 실제로 사용해본 것처럼 구체적인 사적 경험(예: "제가 3개월 써봤는데")을
-지어내지 않으면서 제품의 특징과 장점을 객관적으로 소개하는 리뷰 스타일 글을 작성하세요.
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
+    });
 
-요구사항:
-- 분량: 400~600자, 2~4개 문단
-- 상품명과 가격을 본문에 자연스럽게 포함
-- 문단 사이는 빈 줄 한 줄로 구분
+    if (res.ok) {
+      const json = await res.json();
+      const text = json.candidates?.[0]?.content?.parts?.map((p) => p.text).join('') ?? '';
+      if (!text.trim()) {
+        throw new Error('Gemini API returned empty content');
+      }
+      return text.trim();
+    }
+
+    const retryable = res.status === 429 || res.status >= 500;
+    if (!retryable || attempt >= MAX_RETRIES) {
+      throw new Error(`Gemini API failed (${res.status}): ${await res.text()}`);
+    }
+    await sleep(RETRY_DELAY_MS * (attempt + 1));
+  }
+}
+
+// Generates a Korean product-overview markdown body for one product.
+// Returns plain markdown (no frontmatter, no title).
+export async function generateArticle(env, product, topic) {
+  const shipping = [product.isRocket && '로켓배송', product.isFreeShipping && '무료배송']
+    .filter(Boolean)
+    .join(', ');
+
+  const prompt = `당신은 쿠팡파트너스 제휴 사이트의 한국어 에디터입니다.
+아래 상품 정보만을 근거로 상품의 특징을 정리하는 글을 작성하세요.
+
+규칙:
+- 직접 사용해 본 것처럼 쓰지 마세요. 사적인 경험(예: "제가 3개월 써봤는데")을 지어내지 마세요.
+- "후기", "리뷰", "사용해 보니" 같은 표현을 쓰지 마세요.
+- 상품명에 드러나지 않은 사양(용량, 소재, 기능, 인증 등)을 지어내지 마세요. 확실하지 않은 내용은 구매 전 상품 상세페이지에서 확인하도록 안내하세요.
+- 가격 추이는 페이지의 별도 가격 정보 섹션에 표시되므로, 본문에서는 현재 판매가만 한 번 언급하세요.
+- 분량: 500~800자
+- 아래 소제목을 이 순서대로 사용: "### 핵심 특징", "### 이런 분께 맞아요", "### 구매 전 확인할 점"
 - 마크다운 본문만 출력 (제목/프론트매터 없이 본문만)
 
 카테고리(검색 키워드): ${topic}
 상품명: ${product.productName}
-가격: ${product.productPrice}원
+현재 판매가: ${product.productPrice}원
+${shipping ? `배송: ${shipping}\n` : ''}`;
+
+  return callGemini(env, prompt);
+}
+
+// Generates a brand-neutral buying guide for a whole topic, shown on the
+// /compare/{topic} page. Created once per topic and then kept as-is.
+export async function generateGuide(env, topic) {
+  const prompt = `당신은 한국어 쇼핑 가이드 에디터입니다.
+"${topic}"을(를) 고를 때 확인해야 할 기준을 정리한 구매 가이드를 작성하세요.
+
+규칙:
+- 특정 브랜드나 상품을 추천하거나 언급하지 마세요.
+- 직접 사용해 본 경험을 지어내지 마세요.
+- 종류별 차이, 크기·용량, 관리 방법, 안전 등 일반적으로 알려진 객관적 기준 위주로 쓰세요. 수치는 일반적인 범위로만 쓰고 단정하지 마세요.
+- 분량: 700~1,000자
+- "### " 소제목을 3~4개 사용하고, 마지막 소제목은 "### 한눈에 정리"로 핵심 기준 3~5개를 글머리표로 요약하세요.
+- 마크다운 본문만 출력 (제목/프론트매터 없이 본문만)
 `;
 
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
-  });
-
-  if (!res.ok) {
-    throw new Error(`Gemini API failed (${res.status}): ${await res.text()}`);
-  }
-
-  const json = await res.json();
-  const text = json.candidates?.[0]?.content?.parts?.map((p) => p.text).join('') ?? '';
-  if (!text.trim()) {
-    throw new Error('Gemini API returned empty content');
-  }
-  return text.trim();
+  return callGemini(env, prompt);
 }

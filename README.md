@@ -1,6 +1,6 @@
 # 7mall.kr
 
-쿠팡파트너스 제휴 링크 기반 리뷰 사이트. Astro(정적 사이트) + Cloudflare Workers(Static Assets).
+쿠팡파트너스 제휴 링크 기반 상품 정리·가격 비교 사이트. Astro(정적 사이트) + Cloudflare Workers(Static Assets).
 
 ## 로컬 개발
 
@@ -11,12 +11,26 @@ npm run dev
 
 ## 구조
 
-- `src/content/blog/` — 리뷰 글(Markdown). frontmatter의 `products` 배열에 소개할 상품을 적으면 본문 아래 쿠팡 링크 카드가 자동으로 생성됩니다.
+- `src/content/blog/` — 상품 정리 글(Markdown). frontmatter의 `products` 배열에 소개할 상품을 적으면 본문 아래 쿠팡 링크 카드가 자동으로 생성됩니다.
 - `data/affiliateLinks.json` — 상품 slug → 실제 쿠팡파트너스 링크 매핑. 글을 쓸 때 여기에 slug/URL을 추가하세요.
 - `worker/index.js` — Cloudflare Worker 엔트리포인트. `/go/{slug}` 요청은 실제 쿠팡 링크로 302 리다이렉트(클로킹용)하고, 나머지 요청은 `dist/`의 정적 파일(`ASSETS` 바인딩)로 전달합니다. **로컬 `astro dev`에서는 리다이렉트가 동작하지 않고, `wrangler dev`로만 테스트 가능합니다.**
 - `src/components/AffiliateDisclosure.astro` — 공정거래위원회 표시광고 고지 문구. `hasAffiliateLinks: true`인 글에 자동 표시됩니다.
+- `src/components/AiNotice.astro` — "AI 도움으로 작성, 직접 사용 후기 아님" 안내. `aiAssisted`가 `true`(기본값)인 글에 표시됩니다. 직접 써 보고 쓴 글은 frontmatter에 `aiAssisted: false`를 넣으세요.
+- `data/priceHistory.json` — 상품별 일일 판매가 기록(최근 90일). 글의 "가격 정보" 박스와 비교 페이지의 30일 최저가에 쓰입니다.
+- `data/topicSnapshots.json` — 키워드별 쿠팡 검색 상위 5개 상품. `/compare/{키워드}` 비교 페이지가 이 파일로 만들어집니다.
+- `src/content/guides/` — 키워드별 구매 가이드(비교 페이지 하단). 키워드마다 한 번 자동 생성됩니다.
 
-## 새 리뷰 글 추가하기
+## 매일 자동 실행 (00:00 UTC = 오전 9시)
+
+Worker의 cron이 한 번 실행될 때 다음을 하나의 커밋으로 GitHub에 올립니다.
+
+1. 모든 키워드를 쿠팡 검색 API로 1회씩 조회해 가격 기록·비교 데이터 갱신 (검색 API 호출 제한 때문에 최대 8개 키워드)
+2. 구매 가이드가 없는 키워드 1개에 가이드 생성
+3. 순서가 된 키워드로 상품 정리 글 1건 발행
+
+Gemini가 실패해도 가격 데이터는 저장됩니다. 테스트는 `npm test` (실제 API 호출 없음).
+
+## 직접 글 추가하기
 
 1. `data/affiliateLinks.json`에 상품 slug와 실제 쿠팡파트너스 링크 추가
 2. `src/content/blog/`에 새 `.md` 파일 생성, `products` frontmatter에 같은 slug 사용

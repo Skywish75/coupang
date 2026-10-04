@@ -126,3 +126,267 @@ h1, h2, h3 {
   color: var(--color-muted);
   font-size: 0.85rem;
 }
+
+.product-card .price-label {
+  margin-left: 0.4rem;
+  color: var(--color-muted);
+  font-size: 0.8rem;
+  font-weight: 400;
+}
+
+.ai-notice {
+  background: #f3f4f6;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  font-size: 0.85rem;
+  color: #374151;
+  margin: 1.25rem 0;
+}
+
+.price-box {
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  padding: 1.25rem;
+  margin: -0.75rem 0 1.5rem;
+}
+
+.price-box h2 {
+  font-size: 1.05rem;
+  margin: 0 0 0.75rem;
+}
+
+.price-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 0.75rem;
+  margin: 0;
+}
+
+.price-stats dt {
+  color: var(--color-muted);
+  font-size: 0.8rem;
+}
+
+.price-stats dd {
+  margin: 0;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.price-verdict {
+  display: inline-block;
+  margin: 0.9rem 0 0;
+  padding: 0.3rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  background: #f3f4f6;
+  color: #374151;
+}
+
+.price-verdict[data-tone='good'] {
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.price-verdict[data-tone='bad'] {
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+.price-chart {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin-top: 0.9rem;
+  color: var(--color-accent);
+}
+
+.price-note {
+  color: var(--color-muted);
+  font-size: 0.8rem;
+  margin: 0.75rem 0 0;
+}
+
+.related-compare {
+  margin: 2rem 0;
+  font-weight: 600;
+}
+
+.related-list {
+  padding-left: 1.1rem;
+}
+
+.related-list li {
+  margin: 0.35rem 0;
+}
+
+.table-wrap {
+  overflow-x: auto;
+  margin: 1.5rem 0 0;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+}
+
+.compare-table {
+  width: 100%;
+  min-width: 600px;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.compare-table th,
+.compare-table td {
+  padding: 0.7rem 0.75rem;
+  border-bottom: 1px solid var(--color-border);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.compare-table thead th {
+  background: #f9fafb;
+  color: var(--color-muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.compare-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.compare-table .rank {
+  font-weight: 700;
+  text-align: center;
+}
+
+.compare-table .num {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.compare-product {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.compare-product img {
+  flex: none;
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
+  background: #fff;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+}
+
+.compare-product span {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.badge {
+  display: inline-block;
+  margin-left: 0.35rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: 4px;
+  background: #ecfdf5;
+  color: #047857;
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+.btn-coupang.btn-small {
+  padding: 0.4rem 0.75rem;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.muted {
+  color: var(--color-muted);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* Phones: each table row becomes a card so price, 30-day low and the
+   button stay visible without horizontal scrolling. */
+@media (max-width: 600px) {
+  .table-wrap {
+    overflow: visible;
+  }
+
+  .compare-table {
+    min-width: 0;
+  }
+
+  .compare-table thead {
+    display: none;
+  }
+
+  .compare-table tr {
+    display: grid;
+    grid-template-columns: 1.5rem 1fr auto;
+    column-gap: 0.6rem;
+    padding: 0.9rem 0.85rem;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .compare-table tbody tr:last-child {
+    border-bottom: none;
+  }
+
+  .compare-table td {
+    padding: 0.1rem 0;
+    border: none;
+  }
+
+  .compare-table .rank {
+    grid-column: 1;
+    grid-row: 1;
+    text-align: left;
+    padding-top: 0.75rem;
+  }
+
+  .compare-table .product-cell {
+    grid-column: 2 / 4;
+    grid-row: 1;
+    padding-bottom: 0.4rem;
+  }
+
+  .compare-table .price-cell,
+  .compare-table .low-cell,
+  .compare-table .ship-cell {
+    grid-column: 2;
+    font-size: 0.85rem;
+  }
+
+  .compare-table .price-cell::before,
+  .compare-table .low-cell::before {
+    content: attr(data-label);
+    display: inline-block;
+    min-width: 5.5rem;
+    color: var(--color-muted);
+    font-size: 0.8rem;
+  }
+
+  .compare-table .ship-cell {
+    color: var(--color-muted);
+  }
+
+  .compare-table .link-cell {
+    grid-column: 3;
+    grid-row: 2 / 5;
+    align-self: center;
+  }
+}

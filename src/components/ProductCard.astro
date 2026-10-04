@@ -3,16 +3,23 @@ interface Props {
   slug: string;
   title: string;
   price?: string;
+  // e.g. "2026. 10. 5. 기준" — prices change, so always say when it was seen.
+  priceLabel?: string;
   description?: string;
   image?: string;
 }
 
-const { slug, title, price, description, image } = Astro.props;
+const { slug, title, price, priceLabel, description, image } = Astro.props;
 ---
 <div class="product-card">
   {image && <img src={image} alt={title} loading="lazy" />}
   <h3>{title}</h3>
-  {price && <p class="price">{price}</p>}
+  {price && (
+    <p class="price">
+      {price}
+      {priceLabel && <span class="price-label">{priceLabel}</span>}
+    </p>
+  )}
   {description && <p>{description}</p>}
   <a class="btn-coupang" href={`/go/${slug}`} rel="sponsored nofollow noopener" target="_blank">
     쿠팡에서 보기

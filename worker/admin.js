@@ -48,9 +48,9 @@ async function renderPage(env, notice) {
 
   <section>
     <h2>지금 실행</h2>
-    <p>다음 순서의 키워드로 상품을 찾아 즉시 1건을 자동 발행합니다.</p>
+    <p>모든 키워드의 가격·비교 데이터를 갱신하고, 다음 순서의 키워드로 상품을 찾아 즉시 1건을 자동 발행합니다.</p>
     <form method="post" action="/admin/api/run">
-      <button type="submit">지금 1건 자동 발행</button>
+      <button type="submit">지금 실행 (데이터 갱신 + 1건 발행)</button>
     </form>
   </section>
 
@@ -115,7 +115,7 @@ export async function handleAdmin(request, env) {
         env,
         result.status === 'published'
           ? `발행 완료: ${result.productName} (${result.topic})`
-          : `건너뜀: ${result.topic} - 새로 소개할 상품 없음`
+          : `글 발행 건너뜀 (가격 데이터는 저장됨): ${result.topic} - ${result.reason}`
       );
       return new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
     } catch (err) {
