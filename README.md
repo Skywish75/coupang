@@ -30,6 +30,16 @@ Worker의 cron이 한 번 실행될 때 다음을 하나의 커밋으로 GitHub�
 
 Gemini가 실패해도 가격 데이터는 저장됩니다. 테스트는 `npm test` (실제 API 호출 없음).
 
+## 관리자 페이지 (`/admin`)
+
+`ADMIN_USERNAME` / `ADMIN_PASSWORD` secret으로 로그인합니다 (`npx wrangler secret put ADMIN_PASSWORD` 로 변경).
+
+- **통계**: 전체·키워드별·날짜별 글 수(GitHub 저장소 기준), 가격 추적 상품 수, 비교 페이지·가이드 현황, 마지막 실행 결과
+- **쿠팡 클릭 수**: `/go/` 링크 클릭을 날짜·상품·출발 페이지별로 집계 (D1 `coupang-stats`, 봇·미리보기 제외)
+- **광고 코드**: `<head>` 코드, 상단 배너, 본문 아래 배너, `ads.txt`를 편집. 저장하면 `data/ads.json`이 커밋되고 자동 빌드로 2~3분 뒤 반영됩니다. 쿠팡 배너에는 파트너스 고지 문구가 자동으로 붙습니다.
+
+D1 테이블을 바꿀 때는 `migrations/`에 SQL을 추가하고 `npx wrangler d1 migrations apply coupang-stats --remote`를 직접 실행하세요 (자동 배포로는 적용되지 않습니다).
+
 ## 직접 글 추가하기
 
 1. `data/affiliateLinks.json`에 상품 slug와 실제 쿠팡파트너스 링크 추가

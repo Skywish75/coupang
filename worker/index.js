@@ -2,12 +2,13 @@ import links from '../data/affiliateLinks.json';
 import { handleAdmin } from './admin.js';
 import { runAutoPublish } from './lib/publish.js';
 import { addLog } from './lib/state.js';
+import { recordClick } from './lib/clicks.js';
 
 // Cloaked affiliate redirect: /go/example-product -> real Coupang Partners URL.
-// /admin* is the auto-publish control panel (protected by Cloudflare Access).
+// /admin* is the auto-publish control panel (HTTP Basic Auth, see admin.js).
 // Everything else falls through to the static site build in `dist/` via ASSETS.
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
     if (url.pathname.startsWith('/admin')) {
@@ -24,6 +25,8 @@ export default {
       if (!entry) {
         return new Response('Link not found', { status: 404 });
       }
+      // Counting happens after the redirect is sent; a failed count is dropped.
+      ctx.waitUntil(recordClick(env, request, slug).catch(() => {}));
       return Response.redirect(entry.url, 302);
     }
 

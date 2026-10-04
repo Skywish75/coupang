@@ -2,6 +2,7 @@
 import Header from '../components/Header.astro';
 import Footer from '../components/Footer.astro';
 import '../styles/global.css';
+import { adHead, adTop } from '../lib/ads';
 
 interface Props {
   title: string;
@@ -26,10 +27,13 @@ const canonicalURL = new URL(Astro.url.pathname, Astro.site);
     <meta property="og:url" content={canonicalURL} />
     <meta name="twitter:card" content="summary" />
     <meta name="naver-site-verification" content="96ac25b3216e6cd54c6b48f4cc845a951a9b312d" />
+    <Fragment set:html={adHead} />
   </head>
   <body>
     <Header />
     <main>
+      {/* Ad code saved in /admin (see src/lib/ads.ts); hidden by CSS when empty. */}
+      <div class="ad-slot" set:html={adTop} />
       <slot />
     </main>
     <Footer />

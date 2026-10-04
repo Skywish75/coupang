@@ -1,8 +1,9 @@
 const API_HOST = 'https://api.github.com';
 
+// Reads of the public repo also work without a token (e.g. in `wrangler dev`).
 function ghHeaders(env) {
   return {
-    Authorization: `Bearer ${env.GITHUB_TOKEN}`,
+    ...(env.GITHUB_TOKEN ? { Authorization: `Bearer ${env.GITHUB_TOKEN}` } : {}),
     Accept: 'application/vnd.github+json',
     'User-Agent': 'coupang-auto-publisher',
   };
@@ -40,6 +41,20 @@ export async function getFileContent(env, path) {
 export async function getJsonFile(env, path, fallback) {
   const raw = await getFileContent(env, path);
   return raw === null ? fallback : JSON.parse(raw);
+}
+
+// File names in a repo directory, or [] if the directory doesn't exist.
+export async function listDirectory(env, path) {
+  const branch = env.GITHUB_BRANCH || 'main';
+  const apiPath = `/repos/${env.GITHUB_REPO}/contents/${path}?ref=${branch}`;
+  const res = await fetch(`${API_HOST}${apiPath}`, { headers: ghHeaders(env) });
+  if (res.status === 404) {
+    return [];
+  }
+  if (!res.ok) {
+    throw new Error(`GitHub API ${apiPath} failed (${res.status}): ${await res.text()}`);
+  }
+  return (await res.json()).filter((entry) => entry.type === 'file').map((entry) => entry.name);
 }
 
 // Commits one or more files in a single atomic commit via the Git Data API,

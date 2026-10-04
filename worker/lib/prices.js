@@ -1,4 +1,5 @@
 import { productSlug } from './slug.js';
+import { shiftDate } from './dates.js';
 
 // Daily price points older than this are dropped, and products with no
 // points left are removed, so data/priceHistory.json stays small.
@@ -10,12 +11,6 @@ export const TOP_N = 5;
 // Upper bound on Coupang search calls per run (one per topic). The search
 // API is rate limited, so extra topics are simply not tracked that day.
 export const MAX_TRACKED_TOPICS = 8;
-
-function shiftDate(date, days) {
-  const d = new Date(`${date}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + days);
-  return d.toISOString().slice(0, 10);
-}
 
 // history shape: { updatedAt, products: { [productId]: { name, history: [[date, price], ...] } } }
 // Points are kept sorted by date; recording the same product twice on one

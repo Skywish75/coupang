@@ -12,8 +12,8 @@ import {
 } from './prices.js';
 
 const LINKS_PATH = 'data/affiliateLinks.json';
-const PRICES_PATH = 'data/priceHistory.json';
-const SNAPSHOTS_PATH = 'data/topicSnapshots.json';
+export const PRICES_PATH = 'data/priceHistory.json';
+export const SNAPSHOTS_PATH = 'data/topicSnapshots.json';
 
 function toFrontmatterString(value) {
   return String(value).replace(/"/g, "'");

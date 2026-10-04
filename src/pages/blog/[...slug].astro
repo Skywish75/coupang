@@ -7,6 +7,7 @@ import PriceHistory from '../../components/PriceHistory.astro';
 import { getCollection } from 'astro:content';
 import { getPriceStats, productIdFromSlug, formatWon, formatDate } from '../../lib/prices';
 import { getComparisonForTopic } from '../../lib/compare';
+import { adBottom } from '../../lib/ads';
 
 export async function getStaticPaths() {
   const posts = await getCollection('blog');
@@ -62,5 +63,7 @@ const comparison = post.data.tags.map(getComparisonForTopic).find(Boolean);
         <a href={`/compare/${comparison.slug}/`}>{comparison.topic} 인기 상품 TOP {comparison.products.length} 가격 비교 보기 →</a>
       </p>
     )}
+
+    <div class="ad-slot" set:html={adBottom} />
   </article>
 </BaseLayout>

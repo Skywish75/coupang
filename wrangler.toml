@@ -22,3 +22,11 @@ crons = ["0 0 * * *"]
 [[kv_namespaces]]
 binding = "STATE"
 id = "e62091f95fcb420d9ace3dcda7f132b0"
+
+# 쿠팡 링크(/go/) 클릭 집계용. 테이블 변경은 migrations/ 에 추가한 뒤
+# `npx wrangler d1 migrations apply coupang-stats --remote` 로 직접 적용 (자동 배포로는 적용되지 않음)
+[[d1_databases]]
+binding = "DB"
+database_name = "coupang-stats"
+database_id = "a802c975-a460-4380-bc0e-7e7213294140"
+migrations_dir = "migrations"

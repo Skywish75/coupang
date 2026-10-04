@@ -390,3 +390,29 @@ h1, h2, h3 {
     align-self: center;
   }
 }
+
+/* Ad code from the admin page (src/lib/ads.ts). */
+.ad-slot {
+  margin: 1.5rem 0;
+  text-align: center;
+  overflow: hidden;
+}
+
+.ad-slot:empty {
+  display: none;
+}
+
+.ad-label {
+  display: block;
+  margin-bottom: 0.25rem;
+  color: var(--color-muted);
+  font-size: 0.7rem;
+  text-align: left;
+}
+
+.ad-disclosure {
+  margin: 0.4rem 0 0;
+  color: var(--color-muted);
+  font-size: 0.75rem;
+  text-align: left;
+}

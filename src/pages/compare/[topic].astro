@@ -5,6 +5,7 @@ import AiNotice from '../../components/AiNotice.astro';
 import { getCollection } from 'astro:content';
 import { getComparisons, type Comparison } from '../../lib/compare';
 import { getPriceStats, formatWon, formatDate } from '../../lib/prices';
+import { adBottom } from '../../lib/ads';
 
 export function getStaticPaths() {
   return getComparisons().map((comparison) => ({
@@ -111,5 +112,7 @@ const relatedPosts = (await getCollection('blog', (post) => post.data.tags.inclu
         </ul>
       </section>
     )}
+
+    <div class="ad-slot" set:html={adBottom} />
   </article>
 </BaseLayout>
