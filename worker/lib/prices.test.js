@@ -67,14 +67,14 @@ test('serializePriceHistory round-trips and keeps one product per line', () => {
   assert.deepEqual(JSON.parse(empty), { updatedAt: null, products: {} });
 });
 
-test('buildTopicSnapshot keeps the top 5 by rank with slugs and flags', () => {
-  const products = [6, 2, 4, 1, 5, 3].map((rank) =>
+test('buildTopicSnapshot keeps the top 10 by rank with slugs and flags', () => {
+  const products = [12, 6, 2, 11, 4, 1, 9, 5, 3, 10, 8, 7].map((rank) =>
     product(100 + rank, rank * 1000, { rank, isRocket: rank === 1, isFreeShipping: rank % 2 === 0 })
   );
   const s = buildTopicSnapshot(products, { date: '2026-10-05', hasGuide: true });
   assert.equal(s.updatedAt, '2026-10-05');
   assert.equal(s.hasGuide, true);
-  assert.deepEqual(s.products.map((p) => p.rank), [1, 2, 3, 4, 5]);
+  assert.deepEqual(s.products.map((p) => p.rank), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
   assert.deepEqual(s.products[0], {
     productId: '101',
     priceKey: '101',

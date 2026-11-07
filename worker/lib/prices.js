@@ -5,8 +5,9 @@ import { shiftDate } from './dates.js';
 // points left are removed, so data/priceHistory.json stays small.
 const HISTORY_DAYS = 90;
 
-// Products shown per topic on the /compare/{topic} pages.
-export const TOP_N = 5;
+// Products shown per topic on the /compare/{topic} pages (the daily search
+// returns 10, so every product with a recorded price is compared).
+export const TOP_N = 10;
 
 // Upper bound on Coupang search calls per run (one per topic). The search
 // API is rate limited, so extra topics are simply not tracked that day.

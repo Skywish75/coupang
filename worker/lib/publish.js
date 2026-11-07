@@ -1,9 +1,8 @@
 import { searchProducts } from './coupang.js';
-import { generateArticle, generateGuide } from './gemini.js';
+import { generateGuide } from './gemini.js';
 import { getJsonFile, commitFiles } from './github.js';
-import { getTopics, getNextTopic, isAlreadyPosted, markPosted, addLog } from './state.js';
-import { slugify, productSlug, priceKey } from './slug.js';
-import { shortProductName } from '../../src/lib/names.js';
+import { getTopics, getNextTopic, addLog } from './state.js';
+import { slugify, productSlug } from './slug.js';
 import {
   recordPrices,
   serializePriceHistory,
@@ -16,11 +15,6 @@ const LINKS_PATH = 'data/affiliateLinks.json';
 export const PRICES_PATH = 'data/priceHistory.json';
 export const SNAPSHOTS_PATH = 'data/topicSnapshots.json';
 
-// A post's main value is its price history box, so only products with at
-// least this many recorded days get a post (see also src/lib/posts.ts, which
-// keeps posts out of search until they have this much history).
-export const MIN_HISTORY_DAYS = 14;
-
 function toFrontmatterString(value) {
   return String(value).replace(/"/g, "'");
 }
@@ -31,42 +25,6 @@ export function escapeTildes(markdown) {
   return String(markdown).replace(/(^|[^\\])~/g, '$1\\~');
 }
 
-async function pickUnpostedProduct(env, products, prices) {
-  for (const product of products) {
-    const days = prices.products[priceKey(product)]?.history.length ?? 0;
-    if (days < MIN_HISTORY_DAYS) continue;
-    if (!(await isAlreadyPosted(env, String(product.productId)))) {
-      return product;
-    }
-  }
-  return null;
-}
-
-function buildPost(product, topic, body, today) {
-  const name = toFrontmatterString(product.productName);
-  const short = toFrontmatterString(shortProductName(product.productName));
-  const frontmatter = [
-    '---',
-    `title: "${short} 가격 추이·특징 정리"`,
-    `description: "${short}의 상품명 기준 사양과 매일 기록한 쿠팡 가격 추이를 정리했습니다."`,
-    `pubDate: ${today}`,
-    `tags: ["${toFrontmatterString(topic)}"]`,
-    'hasAffiliateLinks: true',
-    'aiAssisted: true',
-    'products:',
-    `  - slug: ${productSlug(product)}`,
-    `    productId: "${product.productId}"`,
-    `    priceKey: "${priceKey(product)}"`,
-    `    title: "${name}"`,
-    `    price: "${Number(product.productPrice).toLocaleString('ko-KR')}원"`,
-    `    description: "${toFrontmatterString(topic)} 카테고리 상품"`,
-    `    image: "${toFrontmatterString(product.productImage)}"`,
-    '---',
-    '',
-  ].join('\n');
-  return frontmatter + escapeTildes(body) + '\n';
-}
-
 function buildGuide(topic, body, today) {
   return ['---', `topic: "${toFrontmatterString(topic)}"`, `updatedDate: ${today}`, '---', '', escapeTildes(body), ''].join('\n');
 }
@@ -74,12 +32,15 @@ function buildGuide(topic, body, today) {
 // One full daily cycle, committed to GitHub as a single commit (which
 // triggers the connected Cloudflare Workers Build):
 //  1. search every topic once and record today's prices
-//  2. refresh the top-N comparison snapshot per topic
-//  3. publish one product post for today's topic (round-robin)
-//  4. write a buying guide for at most one topic that doesn't have one yet
-// Gemini failures only drop the post/guide; the price data is still saved.
+//  2. refresh the comparison snapshot per topic (/compare/{topic} pages)
+//  3. write a buying guide for at most one topic that doesn't have one yet
+// Daily single-product posts were stopped on 2026-11-07: the compare and
+// price-change pages built from this data are what the site is for now.
+// A Gemini failure only drops the guide; the price data is still saved.
 export async function runAutoPublish(env) {
   const today = new Date().toISOString().slice(0, 10);
+  // Rotates which topic goes first, so with more topics than
+  // MAX_TRACKED_TOPICS each one still gets tracked in turn.
   const topic = await getNextTopic(env);
   const topics = await getTopics(env);
   const tracked = [topic, ...topics.filter((t) => t !== topic)].slice(0, MAX_TRACKED_TOPICS);
@@ -123,34 +84,16 @@ export async function runAutoPublish(env) {
 
   const files = [];
 
-  // A search failure for today's topic is already recorded in `problems`.
-  let post = null;
-  const selected = results[topic] ? await pickUnpostedProduct(env, results[topic], prices) : null;
-  if (results[topic] && !selected) {
-    problems.push(`새로 소개할 상품 없음 (가격 기록 ${MIN_HISTORY_DAYS}일 이상 · 아직 글이 없는 상품 기준)`);
-  }
-  if (selected) {
+  let guideTopic;
+  const needsGuide = tracked.find((t) => snapshots[t]?.products.length && !snapshots[t].hasGuide);
+  if (needsGuide) {
     try {
-      const peers = topProducts(results[topic]).filter((p) => p !== selected);
-      const body = await generateArticle(env, selected, topic, peers);
-      const postSlug = `${today}-${slugify(topic)}-${selected.productId}`;
-      files.push({ path: `src/content/blog/${postSlug}.md`, content: buildPost(selected, topic, body, today) });
-      links[productSlug(selected)] = { url: selected.productUrl, name: selected.productName };
-      post = { product: selected, postSlug };
+      const guide = await generateGuide(env, needsGuide);
+      files.push({ path: `src/content/guides/${slugify(needsGuide)}.md`, content: buildGuide(needsGuide, guide, today) });
+      snapshots[needsGuide].hasGuide = true;
+      guideTopic = needsGuide;
     } catch (err) {
-      problems.push(`글 생성 실패: ${err.message}`);
-    }
-  }
-
-  // After the post, so the day's post gets first use of Gemini's quota.
-  const guideTopic = tracked.find((t) => snapshots[t]?.products.length && !snapshots[t].hasGuide);
-  if (guideTopic) {
-    try {
-      const guide = await generateGuide(env, guideTopic);
-      files.push({ path: `src/content/guides/${slugify(guideTopic)}.md`, content: buildGuide(guideTopic, guide, today) });
-      snapshots[guideTopic].hasGuide = true;
-    } catch (err) {
-      problems.push(`가이드 생성 실패(${guideTopic}): ${err.message}`);
+      problems.push(`가이드 생성 실패(${needsGuide}): ${err.message}`);
     }
   }
 
@@ -160,31 +103,15 @@ export async function runAutoPublish(env) {
     { path: SNAPSHOTS_PATH, content: JSON.stringify(snapshots, null, 2) + '\n' }
   );
 
-  await commitFiles(env, {
-    message: post
-      ? `chore: auto-publish post for "${topic}" (${post.product.productName})`
-      : `chore: update price data (${today})`,
-    files,
-  });
+  await commitFiles(env, { message: `chore: update price data (${today})`, files });
 
-  if (post) {
-    await markPosted(env, String(post.product.productId));
-  }
+  const trackedCount = Object.keys(results).length;
   const reason = problems.join(' / ') || undefined;
   await addLog(env, {
-    topic,
-    status: post ? 'published' : 'skipped',
-    productName: post?.product.productName,
-    postSlug: post?.postSlug,
-    tracked: Object.keys(results).length,
-    reason,
+    topic: `키워드 ${trackedCount}개`,
+    status: 'updated',
+    reason: [guideTopic && `가이드 작성: ${guideTopic}`, reason].filter(Boolean).join(' / ') || undefined,
   });
 
-  return {
-    status: post ? 'published' : 'skipped',
-    topic,
-    productName: post?.product.productName,
-    postSlug: post?.postSlug,
-    reason,
-  };
+  return { status: 'updated', tracked: trackedCount, guideTopic, reason };
 }

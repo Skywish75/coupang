@@ -1,0 +1,26 @@
+---
+import { sparkline, formatWon, type PriceStats } from '../lib/prices';
+
+interface Props {
+  stats: PriceStats;
+}
+
+// Tiny 30-day price line for table rows (the post pages use PriceHistory).
+const { stats } = Astro.props;
+const W = 88;
+const H = 26;
+const chart = stats.count >= 3 && !stats.unstable ? sparkline(stats.series, W, H, 3) : null;
+---
+{chart && (
+  <svg
+    class="spark"
+    viewBox={`0 0 ${W} ${H}`}
+    width={W}
+    height={H}
+    role="img"
+    aria-label={`최근 30일 가격 추이(${stats.count}일 기록): 최저 ${formatWon(stats.min)}, 최고 ${formatWon(stats.max)}`}
+  >
+    <polyline points={chart.points} fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" />
+    <circle cx={chart.last.x} cy={chart.last.y} r="2.5" fill="currentColor" />
+  </svg>
+)}

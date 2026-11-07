@@ -86,3 +86,62 @@ export function formatDate(date: string): string {
 export function isTracked(stats: PriceStats | null, maxAgeDays = 3): boolean {
   return Boolean(stats && data.updatedAt && stats.currentDate >= daysBefore(data.updatedAt, maxAgeDays));
 }
+
+// How far below its own 30-day average a product is now, in whole percent,
+// or null when that isn't a meaningful "cheaper than usual": too few days,
+// a 2x+ swing (option/seller change), or under 3% below average.
+// Used by the home page, the compare pages and the price-change page alike.
+export function discountPct(stats: PriceStats | null): number | null {
+  if (!stats || stats.count < 7 || stats.unstable || stats.current >= stats.avg) return null;
+  const pct = Math.round((1 - stats.current / stats.avg) * 100);
+  return pct >= 3 ? pct : null;
+}
+
+// At its lowest recorded price of the last 30 days (and the price did move).
+export function isAtLow(stats: PriceStats | null): boolean {
+  return Boolean(stats && stats.count >= 7 && !stats.unstable && stats.max > stats.min && stats.current <= stats.min);
+}
+
+// Date of the latest daily price run.
+export const pricesUpdatedAt: string | null = data.updatedAt;
+
+export type WeekChange = { fromDate: string; fromPrice: number; toPrice: number; diff: number; pct: number };
+
+// Change over the last 7 days, from the earliest price recorded in that
+// window to today's. null when the product wasn't recorded today, has a
+// single point in the window, or swung 2x+ within 30 days (see `unstable`).
+export function weekChange(key: string | undefined): WeekChange | null {
+  const stats = getPriceStats(key);
+  if (!stats || !data.updatedAt || stats.currentDate !== data.updatedAt || stats.unstable) return null;
+  const from = daysBefore(data.updatedAt, 7);
+  const week = stats.series.filter(([d]) => d >= from);
+  if (week.length < 2) return null;
+  const [fromDate, fromPrice] = week[0];
+  const diff = stats.current - fromPrice;
+  return { fromDate, fromPrice, toPrice: stats.current, diff, pct: Math.round((diff / fromPrice) * 1000) / 10 };
+}
+
+// Polyline points for a small price chart: x follows the real date gaps,
+// y spans the series' own min..max. null with fewer than 2 points.
+export function sparkline(series: Point[], w: number, h: number, pad: number) {
+  if (series.length < 2) return null;
+  const t = (d: string) => Date.parse(`${d}T00:00:00Z`);
+  const t0 = t(series[0][0]);
+  const span = Math.max(t(series[series.length - 1][0]) - t0, 1);
+  const prices = series.map(([, p]) => p);
+  const min = Math.min(...prices);
+  const range = Math.max(...prices) - min;
+  const xy = series.map(([d, p]) => ({
+    x: pad + ((t(d) - t0) / span) * (w - pad * 2),
+    y: range === 0 ? h / 2 : pad + (1 - (p - min) / range) * (h - pad * 2),
+  }));
+  return {
+    points: xy.map(({ x, y }) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' '),
+    last: xy[xy.length - 1],
+  };
+}
+
+// "11월 7일" (for titles and descriptions; formatDate gives "2026. 11. 7.").
+export function formatMonthDay(date: string): string {
+  return `${Number(date.slice(5, 7))}월 ${Number(date.slice(8, 10))}일`;
+}

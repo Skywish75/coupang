@@ -3,7 +3,7 @@ const CURSOR_KEY = 'topic-cursor';
 const POSTED_KEY = 'posted-product-ids';
 const LOGS_KEY = 'logs';
 
-const DEFAULT_TOPICS = ['무선 이어폰', '캠핑 의자', '가습기', '주방 정리용품', '아기 물티슈'];
+const DEFAULT_TOPICS = ['무선 이어폰', '캠핑 의자', '가습기', '주방 정리용품', '아기 물티슈', '생수', '기저귀', '세탁세제'];
 
 export async function getTopics(env) {
   const raw = await env.STATE.get(TOPICS_KEY);

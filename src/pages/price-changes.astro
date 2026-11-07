@@ -1,0 +1,127 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import AffiliateDisclosure from '../components/AffiliateDisclosure.astro';
+import { getComparisons, compareTitle, type Comparison, type SnapshotProduct } from '../lib/compare';
+import { getPriceStats, weekChange, isAtLow, formatWon, formatDate, formatMonthDay as md, pricesUpdatedAt, type WeekChange } from '../lib/prices';
+import { shortProductName } from '../lib/names.js';
+import { breadcrumb } from '../lib/seo';
+import { adBottom } from '../lib/ads';
+
+// Rebuilt with every daily price commit, so "this week" is always the
+// 7 days up to the latest recorded prices.
+const comparisons = getComparisons();
+const seen = new Set<string>();
+const items = comparisons.flatMap((c) =>
+  c.products.flatMap((p) => {
+    const key = p.priceKey ?? p.productId;
+    if (seen.has(key)) return [];
+    seen.add(key);
+    return [{ c, p, change: weekChange(key), stats: getPriceStats(key) }];
+  })
+);
+
+type Changed = { c: Comparison; p: SnapshotProduct; change: WeekChange };
+const changed = items.filter((i): i is (typeof items)[number] & Changed => i.change !== null);
+const down = changed.filter((i) => i.change.diff < 0).sort((a, b) => a.change.pct - b.change.pct);
+const up = changed.filter((i) => i.change.diff > 0).sort((a, b) => b.change.pct - a.change.pct);
+const flat = changed.length - down.length - up.length;
+const lows = items.filter((i) => isAtLow(i.stats));
+
+const to = pricesUpdatedAt ?? new Date().toISOString().slice(0, 10);
+const fromDate = new Date(`${to}T00:00:00Z`);
+fromDate.setUTCDate(fromDate.getUTCDate() - 7);
+const from = fromDate.toISOString().slice(0, 10);
+
+const title = `이번 주 쿠팡 가격 변동: 가격 내린 상품·오른 상품 (${md(to)} 기준)`;
+const top = down[0];
+const description =
+  changed.length > 0
+    ? `최근 7일(${md(from)}~${md(to)}) 쿠팡 인기 상품 ${changed.length}개 중 가격이 내린 상품 ${down.length}개, 오른 상품 ${up.length}개.` +
+      (top ? ` ${shortProductName(top.p.name)} ${Math.abs(top.change.pct)}% 인하 등` : '') +
+      ` 카테고리별 가격 변동을 매일 기록해 정리합니다.`
+    : '쿠팡 인기 상품의 최근 7일 가격 변동을 매일 기록해 정리합니다.';
+
+const site = Astro.site!;
+const jsonLd = breadcrumb(site, [['홈', '/'], ['이번 주 가격 변동', '/price-changes/']]);
+const won = (n: number) => formatWon(Math.abs(n));
+---
+<BaseLayout title={title} description={description} jsonLd={jsonLd}>
+  <article>
+    <h1>이번 주 쿠팡 가격 변동</h1>
+    <p class="post-meta">{formatDate(from)} ~ {formatDate(to)} · 매일 오전 9시 자동 갱신</p>
+
+    <AffiliateDisclosure />
+
+    <p>
+      카테고리별 쿠팡 인기 상품의 가격을 매일 기록해, 최근 7일 동안 가격이 내린 상품과 오른 상품을 모았습니다.
+      7일 안에 기록이 하루뿐인 상품과, 30일 안에 가격이 2배 넘게 바뀐 상품(옵션·판매자 변경 가능성)은 뺐어요.
+    </p>
+
+    {changed.length > 0 ? (
+      <p class="change-count">
+        비교한 상품 {changed.length}개 중 <strong class="down">내림 {down.length}개</strong> ·
+        <strong class="up">오름 {up.length}개</strong> · 그대로 {flat}개
+      </p>
+    ) : (
+      <p class="muted">아직 비교할 가격 기록이 쌓이지 않았어요. 매일 기록이 쌓이면 이곳에 정리됩니다.</p>
+    )}
+
+    {[
+      { id: 'down', heading: '가격이 내린 상품', list: down },
+      { id: 'up', heading: '가격이 오른 상품', list: up },
+    ].map(({ id, heading, list }) =>
+      list.length > 0 && (
+        <section aria-labelledby={`${id}-title`}>
+          <h2 id={`${id}-title`}>{heading} ({list.length})</h2>
+          <ul class="change-list">
+            {list.map(({ c, p, change }) => (
+              <li class="change-item">
+                <div>
+                  <a class="change-name" href={`/compare/${c.slug}/#rank-${p.rank}`}>{shortProductName(p.name)}</a>
+                  <span class="change-topic">{c.topic} · {formatDate(change.fromDate)} 대비</span>
+                </div>
+                <div class="change-price">
+                  <span class="muted">{formatWon(change.fromPrice)} →</span> <strong>{formatWon(change.toPrice)}</strong>
+                  <span class="change-pct" data-dir={id}>
+                    {id === 'down' ? '▼' : '▲'} {won(change.diff)} ({Math.abs(change.pct)}%)
+                  </span>
+                </div>
+                <a class="btn-coupang btn-small" href={`/go/${p.slug}`} rel="sponsored nofollow noopener" target="_blank">보기</a>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )
+    )}
+
+    {lows.length > 0 && (
+      <section aria-labelledby="low-title">
+        <h2 id="low-title">지금 30일 최저가인 상품 ({lows.length})</h2>
+        <ul class="related-list">
+          {lows.map(({ c, p }) => (
+            <li>
+              <a href={`/compare/${c.slug}/#rank-${p.rank}`}>{shortProductName(p.name)}</a> — {formatWon(p.price)}
+              <span class="post-meta">({c.topic})</span>
+            </li>
+          ))}
+        </ul>
+      </section>
+    )}
+
+    <p class="price-note">
+      가격은 매일 오전 9시 쿠팡 판매가 기준이며, 할인·쿠폰에 따라 실제 결제 금액은 다를 수 있어요.
+      변동은 7일 안에서 가장 먼저 기록된 가격과 오늘 가격을 비교한 값입니다.
+    </p>
+
+    <section aria-labelledby="compare-title">
+      <h2 id="compare-title">카테고리별 가격 비교</h2>
+      <ul class="related-list">
+        {comparisons.map((c) => (
+          <li><a href={`/compare/${c.slug}/`}>{compareTitle(c)}</a></li>
+        ))}
+      </ul>
+    </section>
+
+    <div class="ad-slot" set:html={adBottom} />
+  </article>
+</BaseLayout>

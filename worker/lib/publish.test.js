@@ -96,7 +96,7 @@ function makeEnv(kv) {
   };
 }
 
-// 14 earlier days of prices for every test product, so they qualify for a post.
+// A few earlier days of prices for every test product.
 function seededPrices(ids, days = 14) {
   const history = Array.from({ length: days }, (_, i) => {
     const d = new Date();
@@ -121,13 +121,17 @@ beforeEach(() => {
   installFetch();
 });
 
-test('a normal run tracks every topic, writes a guide and one post in a single commit', async () => {
+test('a normal run records every topic and writes one guide in a single commit, with no post', async () => {
   const kv = memoryKV({ topics: JSON.stringify(['가습기', '캠핑 의자']) });
   const result = await runAutoPublish(makeEnv(kv));
 
-  assert.equal(result.status, 'published');
-  assert.equal(result.topic, '가습기');
+  assert.equal(result.status, 'updated');
+  assert.equal(result.tracked, 2);
+  assert.equal(result.guideTopic, '가습기');
+  assert.equal(result.reason, undefined);
   assert.deepEqual(coupang.calls, ['가습기', '캠핑 의자']);
+  assert.equal(gemini.calls.length, 1, 'only the guide uses Gemini');
+  assert.match(gemini.calls[0], /구매 가이드/);
 
   const files = committed();
   const today = new Date().toISOString().slice(0, 10);
@@ -135,16 +139,8 @@ test('a normal run tracks every topic, writes a guide and one post in a single c
     'data/affiliateLinks.json',
     'data/priceHistory.json',
     'data/topicSnapshots.json',
-    `src/content/blog/${today}-가습기-31.md`,
     'src/content/guides/가습기.md',
   ]);
-
-  const post = files[`src/content/blog/${today}-가습기-31.md`];
-  assert.match(post, /title: "가습기 상품 1 가격 추이·특징 정리"/);
-  assert.match(post, /priceKey: "31"/);
-  assert.match(post, /aiAssisted: true/);
-  assert.match(post, /productId: "31"/);
-  assert.doesNotMatch(post, /후기/);
 
   const prices = JSON.parse(files['data/priceHistory.json']);
   assert.equal(Object.keys(prices.products).length, 12); // 6 per topic
@@ -152,44 +148,58 @@ test('a normal run tracks every topic, writes a guide and one post in a single c
   assert.deepEqual(prices.products['31'].history.at(-1), [today, 10000]);
 
   const snapshots = JSON.parse(files['data/topicSnapshots.json']);
-  assert.equal(snapshots['가습기'].products.length, 5);
+  assert.equal(snapshots['가습기'].products.length, 6); // all of the (fake) 6 results, up to TOP_N
   assert.equal(snapshots['가습기'].hasGuide, true);
   assert.equal(snapshots['캠핑 의자'].hasGuide, false); // one guide per run
 
   const links = JSON.parse(files['data/affiliateLinks.json']);
   assert.ok(links.existing, 'keeps existing links');
   assert.equal(links['가습기-상품-1-31'].url, 'https://link.coupang.com/가습기/1');
-  assert.ok(links['캠핑-의자-상품-5-55'], 'adds links for compared products');
+  assert.ok(links['캠핑-의자-상품-6-56'], 'adds links for every compared product');
 
-  assert.equal(JSON.parse(kv.store.get('posted-product-ids'))[0], '31');
-  assert.equal(JSON.parse(kv.store.get('logs'))[0].status, 'published');
-  assert.match(github.message, /auto-publish post for "가습기"/);
+  assert.equal(kv.store.get('posted-product-ids'), undefined);
+  const log = JSON.parse(kv.store.get('logs'))[0];
+  assert.equal(log.status, 'updated');
+  assert.equal(log.topic, '키워드 2개');
+  assert.equal(log.reason, '가이드 작성: 가습기');
+  assert.equal(github.message, `chore: update price data (${today})`);
 });
 
-test('a Gemini outage drops the post but still commits price data', async () => {
+test('with every guide written, a run makes no Gemini call at all', async () => {
   const kv = memoryKV({ topics: JSON.stringify(['가습기']) });
   github.files['data/topicSnapshots.json'] = JSON.stringify({ 가습기: { hasGuide: true, products: [] } });
+
+  const result = await runAutoPublish(makeEnv(kv));
+
+  assert.equal(result.status, 'updated');
+  assert.equal(result.guideTopic, undefined);
+  assert.equal(gemini.calls.length, 0);
+  assert.ok(!Object.keys(committed()).some((p) => p.startsWith('src/content/')));
+});
+
+test('a Gemini outage drops the guide but still commits price data', async () => {
+  const kv = memoryKV({ topics: JSON.stringify(['가습기']) });
   gemini.responses = [400];
 
   const result = await runAutoPublish(makeEnv(kv));
 
-  assert.equal(result.status, 'skipped');
-  assert.match(result.reason, /글 생성 실패/);
+  assert.equal(result.status, 'updated');
+  assert.equal(result.guideTopic, undefined);
+  assert.match(result.reason, /가이드 생성 실패\(가습기\)/);
   const files = committed();
   assert.ok(files['data/priceHistory.json']);
-  assert.ok(!Object.keys(files).some((p) => p.startsWith('src/content/blog/')));
-  assert.equal(kv.store.get('posted-product-ids'), undefined);
+  assert.ok(!Object.keys(files).some((p) => p.startsWith('src/content/')));
+  assert.equal(JSON.parse(files['data/topicSnapshots.json'])['가습기'].hasGuide, false, 'retried on the next run');
   assert.match(github.message, /update price data/);
 });
 
-test('a transient Gemini 503 is retried instead of dropping the post', async () => {
+test('a transient Gemini 503 is retried instead of dropping the guide', async () => {
   const kv = memoryKV({ topics: JSON.stringify(['가습기']) });
-  github.files['data/topicSnapshots.json'] = JSON.stringify({ 가습기: { hasGuide: true, products: [] } });
   gemini.responses = [503];
 
   const result = await runAutoPublish(makeEnv(kv));
 
-  assert.equal(result.status, 'published');
+  assert.equal(result.guideTopic, '가습기');
   assert.equal(gemini.calls.length, 2);
 });
 
@@ -199,10 +209,19 @@ test('a failed search for one topic does not stop the others', async () => {
 
   const result = await runAutoPublish(makeEnv(kv));
 
-  assert.equal(result.status, 'skipped');
+  assert.equal(result.status, 'updated');
+  assert.equal(result.tracked, 1);
   assert.match(result.reason, /검색 실패\(가습기\)/);
   const snapshots = JSON.parse(committed()['data/topicSnapshots.json']);
   assert.deepEqual(Object.keys(snapshots), ['캠핑 의자']);
+});
+
+test('a run where every search fails throws and commits nothing', async () => {
+  const kv = memoryKV({ topics: JSON.stringify(['가습기']) });
+  coupang.fail.add('가습기');
+
+  await assert.rejects(runAutoPublish(makeEnv(kv)), /검색 실패\(가습기\)/);
+  assert.equal(github.tree, null);
 });
 
 test('comparison data for topics removed from the list is dropped', async () => {
@@ -217,33 +236,6 @@ test('comparison data for topics removed from the list is dropped', async () => 
   const snapshots = JSON.parse(committed()['data/topicSnapshots.json']);
   assert.deepEqual(Object.keys(snapshots), ['가습기']);
   assert.equal(snapshots['가습기'].hasGuide, true, 'keeps the guide flag');
-});
-
-test('already-posted products are skipped and the next one is used', async () => {
-  const kv = memoryKV({
-    topics: JSON.stringify(['가습기']),
-    'posted-product-ids': JSON.stringify(['31', '32']),
-  });
-  github.files['data/topicSnapshots.json'] = JSON.stringify({ 가습기: { hasGuide: true, products: [] } });
-
-  const result = await runAutoPublish(makeEnv(kv));
-  assert.equal(result.productName, '가습기 상품 3');
-});
-
-test('products with under 14 days of price history are not posted yet', async () => {
-  const kv = memoryKV({ topics: JSON.stringify(['가습기']) });
-  github.files['data/topicSnapshots.json'] = JSON.stringify({ 가습기: { hasGuide: true, products: [] } });
-  const prices = JSON.parse(seededPrices(['32']));
-  prices.products['31'] = JSON.parse(seededPrices(['31'], 5)).products['31'];
-  github.files['data/priceHistory.json'] = JSON.stringify(prices);
-
-  const result = await runAutoPublish(makeEnv(kv));
-  assert.equal(result.productName, '가습기 상품 2'); // 31 has only 5 days, 32 has 14
-
-  const prompt = gemini.calls[0];
-  assert.match(prompt, /비교 상품/);
-  assert.match(prompt, /- 가습기 상품 1/);
-  assert.doesNotMatch(prompt, /현재 판매가/);
 });
 
 test('ranges like 65~80g stay literal instead of becoming strikethrough', () => {

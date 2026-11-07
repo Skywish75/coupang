@@ -1,20 +1,20 @@
 ---
 import BaseLayout from '../../layouts/BaseLayout.astro';
-import { getComparisons } from '../../lib/compare';
+import { getComparisons, compareTitle } from '../../lib/compare';
 import { formatDate } from '../../lib/prices';
 
 const comparisons = getComparisons();
 ---
-<BaseLayout title="카테고리별 가격 비교" description="쿠팡 인기 상품의 가격과 배송 조건을 카테고리별로 비교합니다.">
+<BaseLayout title="카테고리별 쿠팡 가격 비교" description="쿠팡 인기 상품의 가격을 매일 기록해 카테고리별로 비교합니다. 물티슈·기저귀 1매당 가격, 생수 100ml당 가격, 30일 최저가와 가격 추이.">
   <h1>카테고리별 가격 비교</h1>
-  <p>카테고리마다 쿠팡 검색 상위 상품의 가격을 매일 기록하고 비교합니다.</p>
+  <p>카테고리마다 쿠팡 검색 상위 상품의 가격을 매일 기록하고 비교합니다. 최근 7일 동안 가격이 바뀐 상품은 <a href="/price-changes/">이번 주 가격 변동</a>에 모아 두었어요.</p>
 
   {comparisons.length === 0 ? (
     <p class="muted">비교 데이터를 모으는 중입니다. 곧 카테고리별 비교 페이지가 열립니다.</p>
   ) : (
     comparisons.map((c) => (
       <article class="post-list-item">
-        <h2><a href={`/compare/${c.slug}/`}>{c.topic} 인기 상품 TOP {c.products.length} 가격 비교</a></h2>
+        <h2><a href={`/compare/${c.slug}/`}>{compareTitle(c)}</a></h2>
         <p class="post-meta">{formatDate(c.updatedAt)} 업데이트</p>
       </article>
     ))

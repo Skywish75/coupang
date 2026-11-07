@@ -184,7 +184,7 @@ async function renderPage(env, notice) {
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <meta name="robots" content="noindex" />
-<title>가격일기 자동발행 관리자</title>
+<title>가격일기 관리자</title>
 <style>
   body { font-family: -apple-system, sans-serif; max-width: 860px; margin: 2rem auto; padding: 0 1rem; color: #1a1a1a; }
   nav a { margin-right: 1rem; color: #ff6f0f; }
@@ -210,7 +210,7 @@ async function renderPage(env, notice) {
 </style>
 </head>
 <body>
-  <h1>가격일기 자동발행 관리자</h1>
+  <h1>가격일기 관리자</h1>
   <nav><a href="#stats">통계</a><a href="#run">지금 실행</a><a href="#topics">키워드</a><a href="#ads">광고</a><a href="#lotto">로또·텔레그램</a><a href="#logs">로그</a></nav>
   ${notice ? `<p class="notice">${escapeHtml(notice)}</p>` : ''}
 
@@ -221,9 +221,9 @@ async function renderPage(env, notice) {
 
   <section id="run">
     <h2>지금 실행</h2>
-    <p>모든 키워드의 가격·비교 데이터를 갱신하고, 다음 순서의 키워드로 상품을 찾아 즉시 1건을 자동 발행합니다.</p>
+    <p>모든 키워드의 쿠팡 가격을 지금 기록하고 비교·가격 변동 페이지를 갱신합니다. 구매 가이드가 없는 키워드가 있으면 1개 작성합니다. (매일 오전 9시에 자동으로도 실행됩니다)</p>
     <form method="post" action="/admin/api/run">
-      <button type="submit">지금 실행 (데이터 갱신 + 1건 발행)</button>
+      <button type="submit">지금 실행 (가격 데이터 갱신)</button>
     </form>
   </section>
 
@@ -313,9 +313,10 @@ export async function handleAdmin(request, env) {
       return htmlResponse(
         await renderPage(
           env,
-          result.status === 'published'
-            ? `발행 완료: ${result.productName} (${result.topic})`
-            : `글 발행 건너뜀 (가격 데이터는 저장됨): ${result.topic} - ${result.reason}`
+          `가격 데이터 갱신 완료 (키워드 ${result.tracked}개)` +
+            (result.guideTopic ? ` · 가이드 작성: ${result.guideTopic}` : '') +
+            (result.reason ? ` · 문제: ${result.reason}` : '') +
+            ' · 1~2분 뒤 사이트에 반영됩니다.'
         )
       );
     } catch (err) {

@@ -11,33 +11,38 @@ npm run dev
 
 ## 구조
 
-- `src/content/blog/` — 상품 정리 글(Markdown). frontmatter의 `products` 배열에 소개할 상품을 적으면 본문 아래 쿠팡 링크 카드가 자동으로 생성됩니다.
+- `src/content/blog/` — 상품 정리 글(Markdown). frontmatter의 `products` 배열에 소개할 상품을 적으면 본문 아래 쿠팡 링크 카드가 자동으로 생성됩니다. 매일 1건씩 자동으로 쓰던 글은 2026-11-07에 멈췄고(기존 글은 그대로 둠), 지금은 직접 쓴 글만 추가합니다.
 - `data/affiliateLinks.json` — 상품 slug → 실제 쿠팡파트너스 링크 매핑. 글을 쓸 때 여기에 slug/URL을 추가하세요.
 - `worker/index.js` — Cloudflare Worker 엔트리포인트. `/go/{slug}` 요청은 실제 쿠팡 링크로 302 리다이렉트(클로킹용)하고, 나머지 요청은 `dist/`의 정적 파일(`ASSETS` 바인딩)로 전달합니다. **로컬 `astro dev`에서는 리다이렉트가 동작하지 않고, `wrangler dev`로만 테스트 가능합니다.**
 - `src/components/AffiliateDisclosure.astro` — 공정거래위원회 표시광고 고지 문구. `hasAffiliateLinks: true`인 글에 자동 표시됩니다.
 - `src/components/AiNotice.astro` — "AI 도움으로 작성, 직접 사용 후기 아님" 안내. `aiAssisted`가 `true`(기본값)인 글에 표시됩니다. 직접 써 보고 쓴 글은 frontmatter에 `aiAssisted: false`를 넣으세요.
 - `data/priceHistory.json` — 상품별 일일 판매가 기록(최근 90일). 글의 "가격 정보" 박스와 비교 페이지의 30일 최저가에 쓰입니다.
-- `data/topicSnapshots.json` — 키워드별 쿠팡 검색 상위 5개 상품. `/compare/{키워드}` 비교 페이지가 이 파일로 만들어집니다.
+- `data/topicSnapshots.json` — 키워드별 쿠팡 검색 상위 10개 상품(`TOP_N`). `/compare/{키워드}` 비교 페이지가 이 파일로 만들어집니다.
+- `/compare/{키워드}` — 현재가, 단위 가격(물티슈·기저귀 1매당, 생수 100ml당, 세제 100ml·100g·1개당), 30일 최저가와 작은 가격 그래프, "평소보다 N% 쌈"(7일 이상 기록 · 30일 평균보다 3% 이상 낮음) 표시. 단위 가격은 상품명의 수량으로 계산하며(`src/lib/units.js`, 테스트 `worker/lib/units.test.js`), 수량이 애매하면 계산하지 않습니다.
+- `/price-changes/` — 최근 7일 동안 가격이 내린/오른 상품과 지금 30일 최저가인 상품. 매일 가격 커밋 때 다시 빌드됩니다.
 - `src/content/guides/` — 키워드별 구매 가이드(비교 페이지 하단). 키워드마다 한 번 자동 생성됩니다.
 
 ## 매일 자동 실행 (00:00 UTC = 오전 9시)
 
-cron은 `wrangler.toml`에 하나만 있고(무료 플랜 계정당 5개 제한), 실행 시각에 따라 `worker/lib/schedule.js`가 할 일을 고릅니다: 매일 09시 자동 발행, 토요일 10~12시 텔레그램 로또 발송, 토 22시·일 0시/10시 당첨번호 수집.
+cron은 `wrangler.toml`에 하나만 있고(무료 플랜 계정당 5개 제한), 실행 시각에 따라 `worker/lib/schedule.js`가 할 일을 고릅니다: 매일 09시 가격 기록, 토요일 10~12시 텔레그램 로또 발송, 토 22시·일 0시/10시 당첨번호 수집.
 
 Worker의 cron이 한 번 실행될 때 다음을 하나의 커밋으로 GitHub에 올립니다.
 
-1. 모든 키워드를 쿠팡 검색 API로 1회씩 조회해 가격 기록·비교 데이터 갱신 (검색 API 호출 제한 때문에 최대 8개 키워드)
+1. 모든 키워드를 쿠팡 검색 API로 1회씩 조회해 가격 기록·비교 데이터 갱신 (검색 API 호출 제한 때문에 최대 8개 키워드 — 지금 8개라 키워드를 더 넣으면 매일 일부가 돌아가며 빠집니다)
 2. 구매 가이드가 없는 키워드 1개에 가이드 생성
-3. 순서가 된 키워드로 상품 정리 글 1건 발행 — 가격 기록이 14일 이상 쌓인 상품만(`MIN_HISTORY_DAYS`, `worker/lib/publish.js`)
+
+커밋 메시지는 `chore: update price data (날짜)`이고, 이 커밋으로 사이트가 다시 빌드되어 비교·가격 변동 페이지가 갱신됩니다.
+기본 키워드는 `worker/lib/state.js`의 `DEFAULT_TOPICS`(관리자 페이지에서 키워드를 저장하면 KV `topics`가 대신 쓰입니다).
 
 가격은 옵션별로 기록합니다(`priceKey` = productId-itemId). 쿠팡은 10개/20개 같은 옵션에 같은 productId를 쓰기 때문입니다.
-Gemini가 실패해도 가격 데이터는 저장됩니다. 테스트는 `npm test` (실제 API 호출 없음).
+Gemini가 실패해도 가격 데이터는 저장됩니다(가이드는 다음 실행에 다시 시도). 테스트는 `npm test` (실제 API 호출 없음).
 
 ## 관리자 페이지 (`/admin`)
 
 `ADMIN_USERNAME` / `ADMIN_PASSWORD` secret으로 로그인합니다 (`npx wrangler secret put ADMIN_PASSWORD` 로 변경).
 
 - **통계**: 전체·키워드별·날짜별 글 수(GitHub 저장소 기준), 가격 추적 상품 수, 비교 페이지·가이드 현황, 마지막 실행 결과
+- **지금 실행**: cron을 기다리지 않고 가격 기록을 바로 실행 (쿠팡 검색 API는 시간당 호출 수 제한이 있으니, 09시 자동 실행 직후에는 누르지 마세요)
 - **쿠팡 클릭 수**: `/go/` 링크 클릭을 날짜·상품·출발 페이지별로 집계 (D1 `coupang-stats`, 봇·미리보기 제외)
 - **광고 코드**: `<head>` 코드, 상단 배너, 본문 아래 배너, `ads.txt`를 편집. 저장하면 `data/ads.json`이 커밋되고 자동 빌드로 2~3분 뒤 반영됩니다. 쿠팡 배너에는 파트너스 고지 문구가 자동으로 붙습니다.
 
@@ -97,18 +102,16 @@ wrangler deploy
 - [x] `/privacy` 페이지 내용을 실제 운영 방식에 맞게 구체화 (개인정보 보호책임자 연락처 포함)
 - [ ] `data/affiliateLinks.json`의 placeholder URL을 실제 쿠팡파트너스 링크로 교체
 
-## 자동 발행 시스템 (관리자)
+## 자동 가격 기록 시스템 (관리자)
 
-매일 지정된 시각에 Cloudflare Cron이 실행되어: 키워드 목록에서 다음 순서의 키워드로
-쿠팡 상품을 검색 → 아직 소개하지 않은 상품 1개 선택 → 딥링크 생성 → Gemini로 리뷰 글
-생성 → GitHub에 자동 커밋(새 글 + `affiliateLinks.json` 갱신을 한 커밋으로) → 커밋이
-Cloudflare Workers Build를 자동 트리거해서 몇 분 내 사이트에 반영됩니다. 사람이 매 건
-검수하지 않고 그대로 발행되므로, 초기에는 로그를 자주 확인하고 필요시 키워드를 조정하세요.
+매일 지정된 시각에 Cloudflare Cron이 실행되어: 모든 키워드로 쿠팡 상품을 검색 → 가격 기록·비교 데이터·
+제휴 링크 갱신(+ 필요하면 구매 가이드 1개) → GitHub에 한 커밋으로 올림 → 커밋이 Cloudflare Workers Build를
+자동 트리거해서 몇 분 내 사이트에 반영됩니다.
 
 관리자 화면: `https://coupang.tclee.workers.dev/admin`
 - 최근 실행 로그 확인
-- 키워드 목록 편집 (한 줄에 하나씩, 순서대로 순환)
-- "지금 1건 자동 발행" 버튼으로 cron을 기다리지 않고 즉시 실행
+- 키워드 목록 편집 (한 줄에 하나씩)
+- "지금 실행" 버튼으로 cron을 기다리지 않고 즉시 실행
 
 ### 설정 체크리스트 (모두 Cloudflare/GitHub 계정에서 직접 하셔야 합니다)
 
@@ -141,4 +144,4 @@ Cloudflare Workers Build를 자동 트리거해서 몇 분 내 사이트에 반�
 ### 주의사항
 
 - 쿠팡 Open API의 정확한 요청 서명 방식은 `worker/lib/coupang.js` 주석에 적어뒀지만, 문서 버전에 따라 세부 사항이 다를 수 있어 최초 실행 시 401 오류가 나면 partners.coupang.com의 최신 API 문서와 대조해서 조정이 필요할 수 있습니다.
-- AI가 생성한 글은 실제 사용 후기가 아니라 상품 정보 기반 소개글입니다. 과장/허위 후기로 보이지 않도록 프롬프트에서 사적 경험 지어내기를 금지해뒀지만, 주기적으로 관리자 화면에서 실제 발행된 글을 훑어보고 품질을 점검하는 걸 권장합니다.
+- AI가 쓴 구매 가이드와 예전 자동 글은 실제 사용 후기가 아니라 일반 기준·상품 정보 기반 소개글입니다. 프롬프트에서 사적 경험 지어내기를 금지해뒀지만, 새 키워드의 가이드가 생기면 한 번씩 읽어 보고 점검하는 걸 권장합니다.

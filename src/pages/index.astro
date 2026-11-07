@@ -1,8 +1,8 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
 import { getCollection } from 'astro:content';
-import { getComparisons } from '../lib/compare';
-import { getPriceStats, formatWon, formatDate } from '../lib/prices';
+import { getComparisons, compareTitle } from '../lib/compare';
+import { getPriceStats, discountPct, formatWon, formatDate } from '../lib/prices';
 import { shortProductName } from '../lib/names.js';
 import { org, SITE_NAME } from '../lib/seo';
 import { postTitle, postUrl } from '../lib/posts';
@@ -17,10 +17,9 @@ const comparisons = getComparisons();
 // price swung 2x+ (option/seller changes) are left out.
 const drops = comparisons
   .flatMap((c) => c.products.map((p) => ({ c, p, s: getPriceStats(p.priceKey ?? p.productId) })))
-  .filter(({ s }) => s && s.count >= 7 && !s.unstable && s.current < s.avg)
-  .map((x) => ({ ...x, pct: Math.round((1 - x.s!.current / x.s!.avg) * 100) }))
-  .filter((x) => x.pct >= 3)
-  .sort((a, b) => b.pct - a.pct)
+  .map((x) => ({ ...x, pct: discountPct(x.s) }))
+  .filter((x) => x.pct !== null)
+  .sort((a, b) => b.pct! - a.pct!)
   .slice(0, 5);
 
 const site = Astro.site!;
@@ -31,11 +30,12 @@ const jsonLd = {
 ---
 <BaseLayout
   title="쿠팡 가격 추이·30일 최저가 비교"
-  description="쿠팡 인기 상품 가격을 매일 기록해 30일 최저가·평균가와 비교합니다. 가습기·무선 이어폰·아기 물티슈 등 카테고리별 TOP 5 가격 비교와 로또 번호 생성기."
+  description="쿠팡 인기 상품 가격을 매일 기록해 30일 최저가·평균가와 비교합니다. 물티슈·기저귀 1매당 가격, 생수 100ml당 가격, 이번 주 가격이 내린 상품까지 한눈에."
   jsonLd={jsonLd}
 >
   <h1>매일 기록하는 쿠팡 가격 비교</h1>
   <p>쿠팡 인기 상품의 가격을 매일 기록해, 지금 가격이 최근 30일과 비교해 싼지 비싼지 보여 드립니다.</p>
+  <p><a href="/price-changes/">이번 주 가격이 내린 상품·오른 상품 보기 →</a></p>
 
   {drops.length > 0 && (
     <>
@@ -43,7 +43,7 @@ const jsonLd = {
       <ul class="related-list">
         {drops.map(({ c, p, s, pct }) => (
           <li>
-            <a href={`/compare/${c.slug}/`}>{shortProductName(p.name)}</a> — {formatWon(s!.current)}, 30일 평균보다 {pct}% 낮음
+            <a href={`/compare/${c.slug}/#rank-${p.rank}`}>{shortProductName(p.name)}</a> — {formatWon(s!.current)}, 30일 평균보다 {pct}% 낮음
             <span class="post-meta">({formatDate(s!.currentDate)} 기준)</span>
           </li>
         ))}
@@ -56,7 +56,7 @@ const jsonLd = {
       <h2>카테고리별 가격 비교</h2>
       <ul class="related-list">
         {comparisons.map((c) => (
-          <li><a href={`/compare/${c.slug}/`}>{c.topic} 인기 상품 TOP {c.products.length} 가격 비교</a></li>
+          <li><a href={`/compare/${c.slug}/`}>{compareTitle(c)}</a></li>
         ))}
       </ul>
     </>
@@ -68,16 +68,13 @@ const jsonLd = {
     <a href="/lotto/">번호 뽑으러 가기 →</a>
   </p>
 
-  <h2>최신 글</h2>
+  <h2>상품별 가격 정리</h2>
   <ul class="related-list">
     {posts.map((post) => (
-      <li>
-        <a href={postUrl(post)}>{postTitle(post)}</a>
-        <span class="post-meta">{post.data.pubDate.toLocaleDateString('ko-KR')}</span>
-      </li>
+      <li><a href={postUrl(post)}>{postTitle(post)}</a></li>
     ))}
   </ul>
-  <p><a href="/blog/">전체 글 보기 →</a></p>
+  <p><a href="/blog/">전체 보기 →</a></p>
 
   <h2>가격은 이렇게 기록해요</h2>
   <p>

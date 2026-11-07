@@ -2,9 +2,12 @@
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import AffiliateDisclosure from '../../components/AffiliateDisclosure.astro';
 import AiNotice from '../../components/AiNotice.astro';
+import Sparkline from '../../components/Sparkline.astro';
 import { getCollection } from 'astro:content';
-import { getComparisons, type Comparison } from '../../lib/compare';
-import { getPriceStats, formatWon, formatDate } from '../../lib/prices';
+import { getComparisons, compareRows, compareTitle, unitHeading, type Comparison, type CompareRow } from '../../lib/compare';
+import { formatWon, formatDate, formatMonthDay } from '../../lib/prices';
+import { unitKindsForTopic, formatUnitPrice, formatQuantity } from '../../lib/units.js';
+import { shortProductName } from '../../lib/names.js';
 import { adBottom } from '../../lib/ads';
 import { breadcrumb } from '../../lib/seo';
 import { postTitle, postUrl } from '../../lib/posts';
@@ -21,16 +24,39 @@ const { topic, updatedAt } = comparison;
 const n = comparison.products.length;
 const [year, month] = updatedAt.split('-').map(Number);
 
-const rows = comparison.products.map((p) => ({ ...p, stats: getPriceStats(p.priceKey ?? p.productId) }));
+const rows = compareRows(comparison);
+const unitHead = unitHeading(topic);
+const kinds = unitKindsForTopic(topic);
+const multiKind = kinds.length > 1;
+
+// Summary box above the table.
+const byUnit = (a: CompareRow, b: CompareRow) => a.unit!.value - b.unit!.value;
+const cheapestUnits = kinds
+  .map((kind) => rows.filter((r) => r.unit?.kind === kind).sort(byUnit))
+  .filter((same) => same.length >= 2)
+  .map((same) => same[0]);
+const cheapestPrice = [...rows].sort((a, b) => a.price - b.price)[0];
+const cheaperNow = rows.filter((r) => r.discount !== null).sort((a, b) => b.discount! - a.discount!);
+const atLow = rows.filter((r) => r.atLow);
+const short = (r: CompareRow) => shortProductName(r.name);
+
+const UNIT_EXAMPLE: Record<string, string> = {
+  sheet: '70매 × 20개 = 1,400매',
+  volume: '2L × 12개 = 24L',
+};
+
 const site = Astro.site!;
 const prices = rows.map((p) => p.price);
-const description = `쿠팡 ${topic} 인기 ${n}개 현재가 ${formatWon(Math.min(...prices))}~${formatWon(Math.max(...prices))}(${formatDate(updatedAt)} 기준). 매일 기록한 30일 최저가와 배송 조건, 고르는 법까지 한 번에 비교합니다.`;
+const best = cheapestUnits[0];
+const description = best
+  ? `쿠팡 ${topic} 인기 ${n}개를 ${unitHead}으로 비교했어요. ${best.unit!.label} 최저 ${formatUnitPrice(best.unit!.value)}(${short(best)}). 매일 기록한 30일 최저가·가격 추이와 지금 평소보다 싼 상품까지 (${formatMonthDay(updatedAt)} 기준).`
+  : `쿠팡 ${topic} 인기 ${n}개 현재가 ${formatWon(Math.min(...prices))}~${formatWon(Math.max(...prices))}(${formatMonthDay(updatedAt)} 기준). 매일 기록한 30일 최저가·가격 추이와 평소보다 싼 상품, 고르는 법까지 한 번에 비교합니다.`;
 const others = getComparisons().filter((c) => c.slug !== comparison.slug);
 const jsonLd = [
   {
     '@context': 'https://schema.org',
     '@type': 'ItemList',
-    name: `${topic} 인기 상품 TOP ${n} (쿠팡 검색 순)`,
+    name: `${topic} 인기 상품 ${n}개 (쿠팡 검색 순)`,
     itemListOrder: 'https://schema.org/ItemListOrderAscending',
     numberOfItems: n,
     itemListElement: rows.map((p) => ({ '@type': 'ListItem', position: p.rank, name: p.name })),
@@ -45,24 +71,72 @@ const relatedPosts = (await getCollection('blog', (post) => post.data.tags.inclu
   .sort((a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf())
   .slice(0, 5);
 ---
-<BaseLayout
-  title={`${topic} 인기 상품 TOP ${n} 가격 비교 (${year}년 ${month}월)`}
-  description={description}
-  jsonLd={jsonLd}
->
+<BaseLayout title={`${compareTitle(comparison)} (${year}년 ${month}월)`} description={description} jsonLd={jsonLd}>
   <article>
     <nav class="breadcrumb post-meta" aria-label="현재 위치">
       <a href="/">홈</a> › <a href="/compare/">가격 비교</a>
     </nav>
-    <h1>{topic} 인기 상품 TOP {n} 가격 비교</h1>
+    <h1>{compareTitle(comparison)}</h1>
     <p class="post-meta">{formatDate(updatedAt)} 업데이트 · 매일 오전 9시 자동 갱신</p>
 
     <AffiliateDisclosure />
 
     <p>
-      쿠팡에서 "{topic}"(으)로 검색했을 때 상위에 나온 상품 {n}개의 가격과 배송 조건을 모았습니다.
+      쿠팡에서 "{topic}"(으)로 검색했을 때 상위에 나온 상품 {n}개의 가격을 매일 기록해 비교합니다.
       순위는 쿠팡 검색 결과 순서이며, 이 사이트가 매긴 평가가 아닙니다.
     </p>
+    {unitHead && (
+      <p>
+        묶음 크기가 제각각이라 판매가만으로는 어느 쪽이 싼지 알기 어려워요. 상품명에 적힌 수량으로 {unitHead}을 계산해 함께 보여 드립니다.
+      </p>
+    )}
+
+    <section class="compare-summary" aria-labelledby="summary-title">
+      <h2 id="summary-title">한눈에 보기</h2>
+      <dl>
+        {cheapestUnits.map((r) => (
+          <div>
+            <dt>{r.unit!.label} 가장 싼 상품</dt>
+            <dd>
+              <a href={`#rank-${r.rank}`}>{short(r)}</a> · {r.unit!.label} <strong>{formatUnitPrice(r.unit!.value)}</strong>
+              <span class="muted">({formatWon(r.price)} ÷ {formatQuantity(r.unit!.kind, r.unit!.quantity)})</span>
+            </dd>
+          </div>
+        ))}
+        {!unitHead && cheapestPrice && (
+          <div>
+            <dt>지금 가장 싼 상품</dt>
+            <dd><a href={`#rank-${cheapestPrice.rank}`}>{short(cheapestPrice)}</a> · <strong>{formatWon(cheapestPrice.price)}</strong></dd>
+          </div>
+        )}
+        <div>
+          <dt>평소보다 싼 상품</dt>
+          <dd>
+            {cheaperNow.length > 0 ? (
+              <ul>
+                {cheaperNow.map((r) => (
+                  <li><a href={`#rank-${r.rank}`}>{short(r)}</a> · 30일 평균보다 <strong>{r.discount}%</strong> 낮음</li>
+                ))}
+              </ul>
+            ) : (
+              <span class="muted">지금은 없어요 (30일 평균 수준이거나 기록이 7일 미만)</span>
+            )}
+          </dd>
+        </div>
+        {atLow.length > 0 && (
+          <div>
+            <dt>지금 30일 최저가</dt>
+            <dd>
+              <ul>
+                {atLow.map((r) => (
+                  <li><a href={`#rank-${r.rank}`}>{short(r)}</a> · {formatWon(r.price)}</li>
+                ))}
+              </ul>
+            </dd>
+          </div>
+        )}
+      </dl>
+    </section>
 
     <div class="table-wrap">
       <table class="compare-table">
@@ -71,14 +145,15 @@ const relatedPosts = (await getCollection('blog', (post) => post.data.tags.inclu
             <th scope="col">순위</th>
             <th scope="col">상품</th>
             <th scope="col">현재가</th>
-            <th scope="col">30일 최저가</th>
+            {unitHead && <th scope="col">{unitHead}</th>}
+            <th scope="col">30일 최저가·추이</th>
             <th scope="col">배송</th>
             <th scope="col"><span class="visually-hidden">링크</span></th>
           </tr>
         </thead>
         <tbody>
           {rows.map((p) => (
-            <tr>
+            <tr id={`rank-${p.rank}`}>
               <td class="rank">{p.rank}</td>
               <td class="product-cell">
                 <div class="compare-product">
@@ -86,7 +161,23 @@ const relatedPosts = (await getCollection('blog', (post) => post.data.tags.inclu
                   <span>{p.name}</span>
                 </div>
               </td>
-              <td class="num price-cell" data-label="현재가">{formatWon(p.price)}</td>
+              <td class="num price-cell" data-label="현재가">
+                {formatWon(p.price)}
+                {p.discount !== null && <span class="badge">평소보다 {p.discount}% 쌈</span>}
+              </td>
+              {unitHead && (
+                <td class="num unit-cell" data-label={unitHead}>
+                  {p.unit ? (
+                    <>
+                      {multiKind && `${p.unit.label} `}{formatUnitPrice(p.unit.value)}
+                      {p.cheapestUnit && <span class="badge">가장 쌈</span>}
+                      <span class="unit-qty">{formatQuantity(p.unit.kind, p.unit.quantity)} 기준</span>
+                    </>
+                  ) : (
+                    <span class="muted" title="상품명에 수량이 적혀 있지 않아 계산하지 않았어요">표기 없음</span>
+                  )}
+                </td>
+              )}
               <td class="num low-cell" data-label="30일 최저가">
                 {p.stats && p.stats.count >= 2 ? (
                   p.stats.unstable ? (
@@ -94,7 +185,8 @@ const relatedPosts = (await getCollection('blog', (post) => post.data.tags.inclu
                   ) : (
                     <>
                       {formatWon(p.stats.min)}
-                      {p.stats.max > p.stats.min && p.price <= p.stats.min && <span class="badge">최저가</span>}
+                      {p.atLow && <span class="badge">최저가</span>}
+                      <Sparkline stats={p.stats} />
                     </>
                   )
                 ) : (
@@ -116,8 +208,15 @@ const relatedPosts = (await getCollection('blog', (post) => post.data.tags.inclu
     </div>
     <p class="price-note">
       가격은 {formatDate(updatedAt)} 쿠팡 판매가 기준이며, 할인·쿠폰에 따라 실제 결제 금액은 다를 수 있어요.
-      "30일 최저가"는 이 사이트가 매일 기록한 가격 중 최저값입니다.
+      "30일 최저가"는 이 사이트가 매일 기록한 가격 중 최저값이고, "평소보다 싼"은 7일 이상 기록된 상품 중 지금 가격이 30일 평균보다 3% 이상 낮은 경우예요.
+      {unitHead && (
+        <>
+          {' '}{unitHead}은 상품명에 적힌 수량{UNIT_EXAMPLE[kinds[0]] && !multiKind ? `(예: ${UNIT_EXAMPLE[kinds[0]]})` : ''}으로 계산했으며,
+          수량이 적혀 있지 않은 상품은 "표기 없음"으로 두고 비교에서 뺐어요.
+        </>
+      )}
     </p>
+    <p class="related-compare"><a href="/price-changes/">이번 주 가격이 내린 상품·오른 상품 보기 →</a></p>
 
     {GuideContent && (
       <section id="guide">
@@ -143,7 +242,7 @@ const relatedPosts = (await getCollection('blog', (post) => post.data.tags.inclu
         <h2>다른 카테고리 가격 비교</h2>
         <ul class="related-list">
           {others.map((c) => (
-            <li><a href={`/compare/${c.slug}/`}>{c.topic} 인기 상품 TOP {c.products.length} 가격 비교</a></li>
+            <li><a href={`/compare/${c.slug}/`}>{compareTitle(c)}</a></li>
           ))}
         </ul>
       </section>

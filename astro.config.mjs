@@ -16,6 +16,7 @@ const snapshots = read('./data/topicSnapshots.json');
 const compareDates = Object.fromEntries(Object.entries(snapshots).map(([t, s]) => [slugify(t), s.updatedAt]));
 const latestCompare = latest(Object.values(snapshots).map((s) => s.updatedAt));
 const latestDraw = latest(Object.values(read('./data/lottoResults.json')).map((r) => r.date));
+const latestPrices = read('./data/priceHistory.json').updatedAt;
 const latestPost = latest(
   fs.readdirSync(new URL('./src/content/blog/', import.meta.url)).map((f) => f.slice(0, 10))
 );
@@ -26,6 +27,7 @@ function lastmodFor(pathname) {
   const compare = pathname.match(/^\/compare\/([^/]+)\/$/);
   if (compare) return compareDates[compare[1]];
   if (pathname === '/lotto/') return latestDraw;
+  if (pathname === '/price-changes/') return latestPrices;
   if (pathname === '/blog/') return latestPost;
   if (pathname === '/' || pathname === '/compare/') return latest([latestPost, latestCompare]);
   return undefined;

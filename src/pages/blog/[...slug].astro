@@ -6,7 +6,7 @@ import ProductCard from '../../components/ProductCard.astro';
 import PriceHistory from '../../components/PriceHistory.astro';
 import { getCollection } from 'astro:content';
 import { getPriceStats, formatWon, formatDate } from '../../lib/prices';
-import { getComparisonForTopic } from '../../lib/compare';
+import { getComparisonForTopic, compareTitle } from '../../lib/compare';
 import { adBottom } from '../../lib/ads';
 import { shortProductName } from '../../lib/names.js';
 import { breadcrumb, org } from '../../lib/seo';
@@ -112,7 +112,7 @@ const jsonLd = [
 
     {comparison && (
       <p class="related-compare">
-        <a href={`/compare/${comparison.slug}/`}>{comparison.topic} 인기 상품 TOP {comparison.products.length} 가격 비교 →</a>
+        <a href={`/compare/${comparison.slug}/`}>{compareTitle(comparison)} →</a>
         <br />
         <a href={`/compare/${comparison.slug}/#guide`}>{comparison.topic} 고르는 법 보기 →</a>
       </p>
