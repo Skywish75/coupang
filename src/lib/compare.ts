@@ -39,16 +39,20 @@ export function getComparisonForTopic(topic: string): Comparison | undefined {
 }
 
 // "1매당 가격" for wipes, "100ml당 가격" for water, "단위 가격" for topics
-// compared by more than one unit (detergent: ml, g or capsules), or null.
-export function unitHeading(topic: string): string | null {
-  const kinds = unitKindsForTopic(topic) as (keyof typeof UNIT_KINDS)[];
+// compared by more than one unit (detergent: ml, g or capsules). null when
+// the topic has no unit, or fewer than two of today's product names state
+// an amount (Coupang's diaper names often don't), so there's nothing to compare.
+export function unitHeading(c: Comparison): string | null {
+  const kinds = unitKindsForTopic(c.topic) as (keyof typeof UNIT_KINDS)[];
   if (kinds.length === 0) return null;
+  const priced = c.products.filter((p) => unitPrice(p.name, p.price, kinds)).length;
+  if (priced < 2) return null;
   return kinds.length === 1 ? `${UNIT_KINDS[kinds[0]].label} 가격` : '단위 가격';
 }
 
 // Page title of /compare/{topic}/, also used as the link text to it.
 export function compareTitle(c: Comparison): string {
-  const unit = unitHeading(c.topic);
+  const unit = unitHeading(c);
   return unit ? `${c.topic} 가격 비교: ${unit}·30일 최저가` : `${c.topic} 가격 비교: 인기 ${c.products.length}개 30일 최저가`;
 }
 

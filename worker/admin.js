@@ -291,7 +291,7 @@ function unauthorizedResponse() {
 const htmlResponse = (html, status = 200) =>
   new Response(html, { status, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
 
-export async function handleAdmin(request, env) {
+export async function handleAdmin(request, env, ctx) {
   if (!env.ADMIN_USERNAME || !env.ADMIN_PASSWORD) {
     return new Response(
       'Forbidden: ADMIN_USERNAME / ADMIN_PASSWORD secret이 설정되지 않았습니다.',
@@ -309,7 +309,11 @@ export async function handleAdmin(request, env) {
 
   if (url.pathname === '/admin/api/run' && request.method === 'POST') {
     try {
-      const result = await runAutoPublish(env);
+      // A run takes ~25s; if the browser leaves or reloads meanwhile,
+      // waitUntil keeps it going instead of cancelling it half-way.
+      const run = runAutoPublish(env);
+      ctx?.waitUntil(run.catch(() => {}));
+      const result = await run;
       return htmlResponse(
         await renderPage(
           env,

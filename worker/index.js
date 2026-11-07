@@ -29,7 +29,7 @@ export default {
     }
 
     if (url.pathname.startsWith('/admin')) {
-      return handleAdmin(request, env);
+      return handleAdmin(request, env, ctx);
     }
 
     if (url.pathname === '/telegram/webhook' && request.method === 'POST') {
