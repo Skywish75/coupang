@@ -2,7 +2,8 @@ import { searchProducts } from './coupang.js';
 import { generateArticle, generateGuide } from './gemini.js';
 import { getJsonFile, commitFiles } from './github.js';
 import { getTopics, getNextTopic, isAlreadyPosted, markPosted, addLog } from './state.js';
-import { slugify, productSlug } from './slug.js';
+import { slugify, productSlug, priceKey } from './slug.js';
+import { shortProductName } from '../../src/lib/names.js';
 import {
   recordPrices,
   serializePriceHistory,
@@ -15,12 +16,25 @@ const LINKS_PATH = 'data/affiliateLinks.json';
 export const PRICES_PATH = 'data/priceHistory.json';
 export const SNAPSHOTS_PATH = 'data/topicSnapshots.json';
 
+// A post's main value is its price history box, so only products with at
+// least this many recorded days get a post (see also src/lib/posts.ts, which
+// keeps posts out of search until they have this much history).
+export const MIN_HISTORY_DAYS = 14;
+
 function toFrontmatterString(value) {
   return String(value).replace(/"/g, "'");
 }
 
-async function pickUnpostedProduct(env, products) {
+// Markdown turns "65~80g … 50~60g" into strikethrough (single-tilde GFM),
+// hiding the text between; ranges written by Gemini need a literal "~".
+export function escapeTildes(markdown) {
+  return String(markdown).replace(/(^|[^\\])~/g, '$1\\~');
+}
+
+async function pickUnpostedProduct(env, products, prices) {
   for (const product of products) {
+    const days = prices.products[priceKey(product)]?.history.length ?? 0;
+    if (days < MIN_HISTORY_DAYS) continue;
     if (!(await isAlreadyPosted(env, String(product.productId)))) {
       return product;
     }
@@ -30,10 +44,11 @@ async function pickUnpostedProduct(env, products) {
 
 function buildPost(product, topic, body, today) {
   const name = toFrontmatterString(product.productName);
+  const short = toFrontmatterString(shortProductName(product.productName));
   const frontmatter = [
     '---',
-    `title: "${name} 특징·가격 정리"`,
-    `description: "${toFrontmatterString(topic)} 상품 ${name}의 특징과 가격 정보를 정리했습니다."`,
+    `title: "${short} 가격 추이·특징 정리"`,
+    `description: "${short}의 상품명 기준 사양과 매일 기록한 쿠팡 가격 추이를 정리했습니다."`,
     `pubDate: ${today}`,
     `tags: ["${toFrontmatterString(topic)}"]`,
     'hasAffiliateLinks: true',
@@ -41,6 +56,7 @@ function buildPost(product, topic, body, today) {
     'products:',
     `  - slug: ${productSlug(product)}`,
     `    productId: "${product.productId}"`,
+    `    priceKey: "${priceKey(product)}"`,
     `    title: "${name}"`,
     `    price: "${Number(product.productPrice).toLocaleString('ko-KR')}원"`,
     `    description: "${toFrontmatterString(topic)} 카테고리 상품"`,
@@ -48,11 +64,11 @@ function buildPost(product, topic, body, today) {
     '---',
     '',
   ].join('\n');
-  return frontmatter + body + '\n';
+  return frontmatter + escapeTildes(body) + '\n';
 }
 
 function buildGuide(topic, body, today) {
-  return ['---', `topic: "${toFrontmatterString(topic)}"`, `updatedDate: ${today}`, '---', '', body, ''].join('\n');
+  return ['---', `topic: "${toFrontmatterString(topic)}"`, `updatedDate: ${today}`, '---', '', escapeTildes(body), ''].join('\n');
 }
 
 // One full daily cycle, committed to GitHub as a single commit (which
@@ -109,13 +125,14 @@ export async function runAutoPublish(env) {
 
   // A search failure for today's topic is already recorded in `problems`.
   let post = null;
-  const selected = results[topic] ? await pickUnpostedProduct(env, results[topic]) : null;
+  const selected = results[topic] ? await pickUnpostedProduct(env, results[topic], prices) : null;
   if (results[topic] && !selected) {
-    problems.push('새로 소개할 상품 없음');
+    problems.push(`새로 소개할 상품 없음 (가격 기록 ${MIN_HISTORY_DAYS}일 이상 · 아직 글이 없는 상품 기준)`);
   }
   if (selected) {
     try {
-      const body = await generateArticle(env, selected, topic);
+      const peers = topProducts(results[topic]).filter((p) => p !== selected);
+      const body = await generateArticle(env, selected, topic, peers);
       const postSlug = `${today}-${slugify(topic)}-${selected.productId}`;
       files.push({ path: `src/content/blog/${postSlug}.md`, content: buildPost(selected, topic, body, today) });
       links[productSlug(selected)] = { url: selected.productUrl, name: selected.productName };

@@ -41,28 +41,32 @@ async function callGemini(env, prompt) {
 }
 
 // Generates a Korean product-overview markdown body for one product.
-// Returns plain markdown (no frontmatter, no title).
-export async function generateArticle(env, product, topic) {
+// Returns plain markdown (no frontmatter, no title). Prices are left out on
+// purpose: the page's price box shows the current, updated price and history,
+// while text written on publish day would go stale.
+export async function generateArticle(env, product, topic, peers = []) {
   const shipping = [product.isRocket && '로켓배송', product.isFreeShipping && '무료배송']
     .filter(Boolean)
     .join(', ');
 
-  const prompt = `당신은 쿠팡파트너스 제휴 사이트의 한국어 에디터입니다.
-아래 상품 정보만을 근거로 상품의 특징을 정리하는 글을 작성하세요.
+  const prompt = `당신은 가격 비교 사이트의 한국어 에디터입니다. 아래 데이터만 근거로 쓰세요.
 
 규칙:
-- 직접 사용해 본 것처럼 쓰지 마세요. 사적인 경험(예: "제가 3개월 써봤는데")을 지어내지 마세요.
-- "후기", "리뷰", "사용해 보니" 같은 표현을 쓰지 마세요.
-- 상품명에 드러나지 않은 사양(용량, 소재, 기능, 인증 등)을 지어내지 마세요. 확실하지 않은 내용은 구매 전 상품 상세페이지에서 확인하도록 안내하세요.
-- 가격 추이는 페이지의 별도 가격 정보 섹션에 표시되므로, 본문에서는 현재 판매가만 한 번 언급하세요.
-- 분량: 500~800자
-- 아래 소제목을 이 순서대로 사용: "### 핵심 특징", "### 이런 분께 맞아요", "### 구매 전 확인할 점"
+- 직접 사용해 본 것처럼 쓰지 마세요. "후기", "리뷰", "사용해 보니" 같은 표현을 쓰지 마세요.
+- 상품명에 없는 사양(용량, 소재, 기능, 인증 등)이나 "깔끔한 디자인", "튼튼한" 같은 평가를 지어내지 마세요.
+- 가격·할인율 숫자는 쓰지 마세요. 가격과 30일 추이는 페이지의 가격 정보 박스가 매일 갱신해 보여 줍니다.
+- 분량: 400~600자
+- 아래 소제목을 이 순서대로 사용:
+  "## 상품명으로 확인되는 사양" — 마크다운 표(항목 | 내용). 상품명에서 읽히는 것만 적으세요.
+  "## 같은 카테고리 인기 상품과 다른 점" — 아래 비교 상품들의 상품명 기준으로 방식·용량·구성 차이를 1~3문장으로.
+  "## 구매 전 확인할 점" — 상품명으로 확인되지 않아 상세페이지에서 봐야 할 항목 2~3개를 글머리표로.
 - 마크다운 본문만 출력 (제목/프론트매터 없이 본문만)
 
 카테고리(검색 키워드): ${topic}
 상품명: ${product.productName}
-현재 판매가: ${product.productPrice}원
-${shipping ? `배송: ${shipping}\n` : ''}`;
+${shipping ? `배송: ${shipping}\n` : ''}${
+    peers.length ? `비교 상품(같은 카테고리 쿠팡 검색 상위):\n${peers.map((p) => `- ${p.productName}`).join('\n')}\n` : ''
+  }`;
 
   return callGemini(env, prompt);
 }

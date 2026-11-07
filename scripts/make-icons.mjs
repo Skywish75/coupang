@@ -72,7 +72,16 @@ function lottoOgImage() {
   </svg>`;
 }
 
+// Site logo (same design as public/favicon.svg), used as the Organization logo.
+function logo() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 100 100">
+    <rect width="100" height="100" rx="20" fill="#ff6f0f"/>
+    <text x="50" y="68" font-size="56" font-weight="700" text-anchor="middle" fill="#fff" font-family="${FONT}">7</text>
+  </svg>`;
+}
+
 const jobs = [
+  ['logo-512.png', logo(), 512],
   ['lotto-512.png', lottoIcon({ rounded: true }), 512],
   ['lotto-192.png', lottoIcon({ rounded: true }), 192],
   ['lotto-maskable-512.png', lottoIcon({ rounded: false, scale: 0.78 }), 512],

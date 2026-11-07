@@ -1,7 +1,8 @@
 import priceHistory from '../../data/priceHistory.json';
 
 type Point = [date: string, price: number];
-type History = { updatedAt: string | null; products: Record<string, { name: string; history: Point[] }> };
+type Entry = { name: string; productId?: string; history: Point[] };
+type History = { updatedAt: string | null; products: Record<string, Entry> };
 
 const data = priceHistory as unknown as History;
 
@@ -17,6 +18,9 @@ export type PriceStats = {
   avg: number;
   count: number;
   series: Point[];
+  // Price swung 2x or more within 30 days: usually Coupang switched the
+  // option or seller behind the listing, so min/avg aren't comparable.
+  unstable: boolean;
   verdict: { label: string; tone: 'good' | 'neutral' | 'bad' } | null;
 };
 
@@ -30,9 +34,19 @@ function daysBefore(date: string, days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+// `key` is a priceKey ("{productId}-{itemId}") or, for posts written before
+// option keys existed, a bare productId. A bare productId is only resolved
+// when exactly one option of it is tracked — never guess between options.
+function findEntry(key: string | undefined): Entry | undefined {
+  if (!key) return undefined;
+  if (data.products[key]) return data.products[key];
+  const options = Object.entries(data.products).filter(([k]) => k.startsWith(`${key}-`));
+  return options.length === 1 ? options[0][1] : undefined;
+}
+
 // Stats over the last 30 days ending at the product's latest recorded price.
-export function getPriceStats(productId: string | undefined): PriceStats | null {
-  const entry = productId ? data.products[productId] : undefined;
+export function getPriceStats(key: string | undefined): PriceStats | null {
+  const entry = findEntry(key);
   if (!entry?.history.length) return null;
 
   const history = [...entry.history].sort(([a], [b]) => a.localeCompare(b));
@@ -44,8 +58,11 @@ export function getPriceStats(productId: string | undefined): PriceStats | null 
   const max = Math.max(...prices);
   const avg = Math.round(prices.reduce((a, b) => a + b, 0) / prices.length);
 
+  const unstable = max >= min * 2;
   let verdict: PriceStats['verdict'] = null;
-  if (series.length >= MIN_POINTS_FOR_VERDICT) {
+  if (unstable) {
+    verdict = { label: '가격 변동 폭이 커서(옵션·판매자 변경 가능성) 최저가 비교는 생략했어요', tone: 'neutral' };
+  } else if (series.length >= MIN_POINTS_FOR_VERDICT) {
     if (min === max) verdict = { label: '최근 30일 동안 가격 변동이 없었어요', tone: 'neutral' };
     else if (current <= min) verdict = { label: '지금이 최근 30일 최저가예요', tone: 'good' };
     else if (current < avg) verdict = { label: '최근 30일 평균보다 저렴해요', tone: 'good' };
@@ -53,7 +70,7 @@ export function getPriceStats(productId: string | undefined): PriceStats | null 
     else verdict = { label: '최근 30일 평균 수준이에요', tone: 'neutral' };
   }
 
-  return { current, currentDate, min, max, avg, count: series.length, series, verdict };
+  return { current, currentDate, min, max, avg, count: series.length, series, unstable, verdict };
 }
 
 export function formatWon(n: number): string {
@@ -62,4 +79,10 @@ export function formatWon(n: number): string {
 
 export function formatDate(date: string): string {
   return new Date(`${date}T00:00:00+09:00`).toLocaleDateString('ko-KR', { timeZone: 'Asia/Seoul' });
+}
+
+// True when the product was still in a recent daily search (it drops out of
+// tracking once it leaves the topic's top results).
+export function isTracked(stats: PriceStats | null, maxAgeDays = 3): boolean {
+  return Boolean(stats && data.updatedAt && stats.currentDate >= daysBefore(data.updatedAt, maxAgeDays));
 }

@@ -2,7 +2,7 @@
 // endpoints and an in-memory KV, so nothing real is called or committed.
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { runAutoPublish } from './publish.js';
+import { runAutoPublish, escapeTildes } from './publish.js';
 
 function memoryKV(initial = {}) {
   const store = new Map(Object.entries(initial));
@@ -96,8 +96,26 @@ function makeEnv(kv) {
   };
 }
 
+// 14 earlier days of prices for every test product, so they qualify for a post.
+function seededPrices(ids, days = 14) {
+  const history = Array.from({ length: days }, (_, i) => {
+    const d = new Date();
+    d.setUTCDate(d.getUTCDate() - (days - i));
+    return [d.toISOString().slice(0, 10), 10000];
+  });
+  return JSON.stringify({ updatedAt: null, products: Object.fromEntries(ids.map((id) => [id, { name: 'x', history }])) });
+}
+const ALL_IDS = ['31', '32', '33', '34', '35', '36', '51', '52', '53', '54', '55', '56'];
+
 beforeEach(() => {
-  github = { files: { 'data/affiliateLinks.json': '{"existing":{"url":"u","name":"n"}}' }, blobs: [], tree: null };
+  github = {
+    files: {
+      'data/affiliateLinks.json': '{"existing":{"url":"u","name":"n"}}',
+      'data/priceHistory.json': seededPrices(ALL_IDS),
+    },
+    blobs: [],
+    tree: null,
+  };
   gemini = { calls: [], responses: [] };
   coupang = { calls: [], fail: new Set() };
   installFetch();
@@ -122,14 +140,16 @@ test('a normal run tracks every topic, writes a guide and one post in a single c
   ]);
 
   const post = files[`src/content/blog/${today}-가습기-31.md`];
-  assert.match(post, /title: "가습기 상품 1 특징·가격 정리"/);
+  assert.match(post, /title: "가습기 상품 1 가격 추이·특징 정리"/);
+  assert.match(post, /priceKey: "31"/);
   assert.match(post, /aiAssisted: true/);
   assert.match(post, /productId: "31"/);
   assert.doesNotMatch(post, /후기/);
 
   const prices = JSON.parse(files['data/priceHistory.json']);
   assert.equal(Object.keys(prices.products).length, 12); // 6 per topic
-  assert.deepEqual(prices.products['31'].history, [[today, 10000]]);
+  assert.equal(prices.products['31'].history.length, 15);
+  assert.deepEqual(prices.products['31'].history.at(-1), [today, 10000]);
 
   const snapshots = JSON.parse(files['data/topicSnapshots.json']);
   assert.equal(snapshots['가습기'].products.length, 5);
@@ -208,4 +228,25 @@ test('already-posted products are skipped and the next one is used', async () =>
 
   const result = await runAutoPublish(makeEnv(kv));
   assert.equal(result.productName, '가습기 상품 3');
+});
+
+test('products with under 14 days of price history are not posted yet', async () => {
+  const kv = memoryKV({ topics: JSON.stringify(['가습기']) });
+  github.files['data/topicSnapshots.json'] = JSON.stringify({ 가습기: { hasGuide: true, products: [] } });
+  const prices = JSON.parse(seededPrices(['32']));
+  prices.products['31'] = JSON.parse(seededPrices(['31'], 5)).products['31'];
+  github.files['data/priceHistory.json'] = JSON.stringify(prices);
+
+  const result = await runAutoPublish(makeEnv(kv));
+  assert.equal(result.productName, '가습기 상품 2'); // 31 has only 5 days, 32 has 14
+
+  const prompt = gemini.calls[0];
+  assert.match(prompt, /비교 상품/);
+  assert.match(prompt, /- 가습기 상품 1/);
+  assert.doesNotMatch(prompt, /현재 판매가/);
+});
+
+test('ranges like 65~80g stay literal instead of becoming strikethrough', () => {
+  assert.equal(escapeTildes('65~80g, 50~60g'), '65\\~80g, 50\\~60g');
+  assert.equal(escapeTildes('~1L and 2\\~3L'), '\\~1L and 2\\~3L');
 });

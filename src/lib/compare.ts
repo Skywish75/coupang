@@ -3,6 +3,8 @@ import { slugify } from '../../worker/lib/slug.js';
 
 export type SnapshotProduct = {
   productId: string;
+  // Key in priceHistory.json (productId + option); missing in older snapshots.
+  priceKey?: string;
   name: string;
   price: number;
   image?: string;

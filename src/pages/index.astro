@@ -2,19 +2,54 @@
 import BaseLayout from '../layouts/BaseLayout.astro';
 import { getCollection } from 'astro:content';
 import { getComparisons } from '../lib/compare';
+import { getPriceStats, formatWon, formatDate } from '../lib/prices';
+import { shortProductName } from '../lib/names.js';
+import { org } from '../lib/seo';
+import { postTitle, postUrl } from '../lib/posts';
 
-const posts = (await getCollection('blog')).sort(
-  (a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf()
-).slice(0, 5);
+const posts = (await getCollection('blog'))
+  .sort((a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf())
+  .slice(0, 5);
 
 const comparisons = getComparisons();
+
+// Top products now clearly below their own 30-day average. Products whose
+// price swung 2x+ (option/seller changes) are left out.
+const drops = comparisons
+  .flatMap((c) => c.products.map((p) => ({ c, p, s: getPriceStats(p.priceKey ?? p.productId) })))
+  .filter(({ s }) => s && s.count >= 7 && !s.unstable && s.current < s.avg)
+  .map((x) => ({ ...x, pct: Math.round((1 - x.s!.current / x.s!.avg) * 100) }))
+  .filter((x) => x.pct >= 3)
+  .sort((a, b) => b.pct - a.pct)
+  .slice(0, 5);
+
+const site = Astro.site!;
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@graph': [{ '@type': 'WebSite', url: site.href, name: '7mall.kr', inLanguage: 'ko-KR' }, org(site)],
+};
 ---
 <BaseLayout
-  title="7mall.kr - 상품 비교 & 가격 정보"
-  description="쿠팡 인기 상품의 특징과 가격 추이를 정리하고 카테고리별로 비교하는 7mall.kr입니다."
+  title="쿠팡 가격 추이·30일 최저가 비교"
+  description="쿠팡 인기 상품 가격을 매일 기록해 30일 최저가·평균가와 비교합니다. 가습기·무선 이어폰·아기 물티슈 등 카테고리별 TOP 5 가격 비교와 로또 번호 생성기."
+  jsonLd={jsonLd}
 >
-  <h1>7mall.kr</h1>
-  <p>쿠팡 인기 상품의 특징을 정리하고, 매일 기록한 가격으로 지금 사도 괜찮은 가격인지 비교해 드립니다.</p>
+  <h1>매일 기록하는 쿠팡 가격 비교</h1>
+  <p>쿠팡 인기 상품의 가격을 매일 기록해, 지금 가격이 최근 30일과 비교해 싼지 비싼지 보여 드립니다.</p>
+
+  {drops.length > 0 && (
+    <>
+      <h2>요즘 평소보다 싼 상품</h2>
+      <ul class="related-list">
+        {drops.map(({ c, p, s, pct }) => (
+          <li>
+            <a href={`/compare/${c.slug}/`}>{shortProductName(p.name)}</a> — {formatWon(s!.current)}, 30일 평균보다 {pct}% 낮음
+            <span class="post-meta">({formatDate(s!.currentDate)} 기준)</span>
+          </li>
+        ))}
+      </ul>
+    </>
+  )}
 
   {comparisons.length > 0 && (
     <>
@@ -27,12 +62,26 @@ const comparisons = getComparisons();
     </>
   )}
 
+  <h2>로또 번호 생성기</h2>
+  <p>
+    이미 산 번호와 빼고 싶은 번호를 제외하고 6개를 무작위로 뽑아 줍니다. 용지 QR 인식, 매주 텔레그램 알림도 돼요.
+    <a href="/lotto/">번호 뽑으러 가기 →</a>
+  </p>
+
   <h2>최신 글</h2>
-  {posts.map((post) => (
-    <article class="post-list-item">
-      <h2><a href={`/blog/${post.slug}`}>{post.data.title}</a></h2>
-      <p class="post-meta">{post.data.pubDate.toLocaleDateString('ko-KR')}</p>
-      <p>{post.data.description}</p>
-    </article>
-  ))}
+  <ul class="related-list">
+    {posts.map((post) => (
+      <li>
+        <a href={postUrl(post)}>{postTitle(post)}</a>
+        <span class="post-meta">{post.data.pubDate.toLocaleDateString('ko-KR')}</span>
+      </li>
+    ))}
+  </ul>
+  <p><a href="/blog/">전체 글 보기 →</a></p>
+
+  <h2>가격은 이렇게 기록해요</h2>
+  <p>
+    매일 오전 9시, 카테고리별 쿠팡 검색 상위 상품의 판매가를 기록합니다. 순위는 쿠팡 검색 순서이며 이 사이트의 평가가 아닙니다.
+    할인 쿠폰·카드 할인은 반영되지 않아요. <a href="/about/">자세히 보기</a>
+  </p>
 </BaseLayout>

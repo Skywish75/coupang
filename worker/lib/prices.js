@@ -1,4 +1,4 @@
-import { productSlug } from './slug.js';
+import { productSlug, priceKey } from './slug.js';
 import { shiftDate } from './dates.js';
 
 // Daily price points older than this are dropped, and products with no
@@ -12,22 +12,32 @@ export const TOP_N = 5;
 // API is rate limited, so extra topics are simply not tracked that day.
 export const MAX_TRACKED_TOPICS = 8;
 
-// history shape: { updatedAt, products: { [productId]: { name, history: [[date, price], ...] } } }
+// history shape: { updatedAt, products: { [priceKey]: { name, productId, history: [[date, price], ...] } } }
+// priceKey is "{productId}-{itemId}" (one entry per option, see slug.js).
 // Points are kept sorted by date; recording the same product twice on one
 // date keeps only the latest price.
 export function recordPrices(history, products, date) {
   const next = { updatedAt: date, products: { ...(history?.products ?? {}) } };
 
   for (const product of products) {
-    const id = String(product.productId ?? '');
+    const pid = String(product.productId ?? '');
+    const id = priceKey(product);
     const price = Number(product.productPrice);
-    if (!id || !Number.isFinite(price) || price <= 0) continue;
+    if (!pid || !Number.isFinite(price) || price <= 0) continue;
+
+    // Older data was keyed by productId alone. Carry that history over only
+    // when it was recorded under this exact option name.
+    const legacy = next.products[pid];
+    if (id !== pid && !next.products[id] && legacy?.name === product.productName) {
+      next.products[id] = legacy;
+      delete next.products[pid];
+    }
 
     const prev = next.products[id];
     const points = (prev ? prev.history : []).filter(([d]) => d !== date);
     points.push([date, price]);
     points.sort(([a], [b]) => a.localeCompare(b));
-    next.products[id] = { name: product.productName, history: points };
+    next.products[id] = { name: product.productName, productId: pid, history: points };
   }
 
   const cutoff = shiftDate(date, -HISTORY_DAYS);
@@ -73,6 +83,7 @@ export function buildTopicSnapshot(products, { date, hasGuide }) {
     hasGuide: Boolean(hasGuide),
     products: topProducts(products).map((p, i) => ({
       productId: String(p.productId),
+      priceKey: priceKey(p),
       name: p.productName,
       price: Number(p.productPrice),
       image: p.productImage,

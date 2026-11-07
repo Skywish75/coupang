@@ -28,8 +28,9 @@ Worker의 cron이 한 번 실행될 때 다음을 하나의 커밋으로 GitHub�
 
 1. 모든 키워드를 쿠팡 검색 API로 1회씩 조회해 가격 기록·비교 데이터 갱신 (검색 API 호출 제한 때문에 최대 8개 키워드)
 2. 구매 가이드가 없는 키워드 1개에 가이드 생성
-3. 순서가 된 키워드로 상품 정리 글 1건 발행
+3. 순서가 된 키워드로 상품 정리 글 1건 발행 — 가격 기록이 14일 이상 쌓인 상품만(`MIN_HISTORY_DAYS`, `worker/lib/publish.js`)
 
+가격은 옵션별로 기록합니다(`priceKey` = productId-itemId). 쿠팡은 10개/20개 같은 옵션에 같은 productId를 쓰기 때문입니다.
 Gemini가 실패해도 가격 데이터는 저장됩니다. 테스트는 `npm test` (실제 API 호출 없음).
 
 ## 관리자 페이지 (`/admin`)
@@ -55,6 +56,12 @@ D1 테이블을 바꿀 때는 `migrations/`에 SQL을 추가하고 `npx wrangler
 2. Cloudflare 대시보드 → Workers & Pages → coupang → 설정 → Variables and Secrets → Secret `TELEGRAM_BOT_TOKEN` 추가 (또는 `npx wrangler secret put TELEGRAM_BOT_TOKEN`)
 3. `/admin` → "로또 번호 · 텔레그램" → **텔레그램 봇 연결**. 웹훅·명령어 메뉴가 설정되고 `data/telegram.json`에 봇 아이디가 커밋되어 `/lotto` 페이지에 구독 버튼이 생깁니다.
 4. 도메인을 7mall.kr로 옮긴 뒤에는 새 주소의 `/admin`에서 **텔레그램 봇 연결**을 한 번 더 누르세요(웹훅 주소 갱신).
+
+## 검색엔진(SEO)
+
+- 자동 글은 가격 기록 14일 이상 · 최근 3일 안에 기록 있음 · 30일 가격 변동 2배 미만일 때만 검색에 노출합니다(`src/lib/posts.ts`의 `isIndexablePost`). 나머지는 `noindex, follow`이고 사이트맵·RSS에서도 빠집니다. 직접 쓴 글(`aiAssisted: false`)은 항상 노출됩니다.
+- 사이트맵 `/sitemap-index.xml`(페이지별 lastmod), RSS `/rss.xml`, `/robots.txt`는 빌드 때 `site` 값으로 만들어집니다. 네이버 서치어드바이저에 사이트맵과 RSS를 제출하세요.
+- 공유 이미지·아이콘(`public/icons/`)은 `node scripts/make-icons.mjs`로 다시 만듭니다(로컬 Mac에서 실행 후 커밋 — 빌드 서버엔 한글 폰트가 없을 수 있음).
 
 ## 직접 글 추가하기
 
@@ -85,12 +92,13 @@ wrangler deploy
 1. Cloudflare 대시보드에 7mall.kr 도메인 추가
 2. 도메인 등록기관(가비아 등)에서 네임서버를 Cloudflare가 안내하는 값으로 변경
 3. Worker 프로젝트(coupang) 설정 → 도메인 → Custom domains에서 7mall.kr 추가
-4. `astro.config.mjs`의 `site`와 `public/robots.txt`의 `Sitemap` 주소를 `https://7mall.kr`로 변경 후 재배포 (canonical·사이트맵이 이 값을 따른다)
+4. `astro.config.mjs`의 `SITE`를 `https://7mall.kr`로 변경 후 재배포 (canonical·og·사이트맵·robots.txt·RSS가 이 값을 따른다)
+5. workers.dev → 7mall.kr 301 리다이렉트를 Worker에 추가하고(`/telegram/webhook` 제외), 구글 서치 콘솔·네이버·다음·빙에 새 주소로 등록
 
 ## 법적 고지 체크리스트
 
 - [ ] 모든 제휴 링크가 포함된 글에 `hasAffiliateLinks: true` 설정 (기본값 true)
-- [ ] `/privacy` 페이지 내용을 실제 운영 방식에 맞게 구체화
+- [x] `/privacy` 페이지 내용을 실제 운영 방식에 맞게 구체화 (개인정보 보호책임자 연락처는 운영자가 추가)
 - [ ] `data/affiliateLinks.json`의 placeholder URL을 실제 쿠팡파트너스 링크로 교체
 
 ## 자동 발행 시스템 (관리자)

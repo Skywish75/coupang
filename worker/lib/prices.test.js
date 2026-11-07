@@ -77,6 +77,7 @@ test('buildTopicSnapshot keeps the top 5 by rank with slugs and flags', () => {
   assert.deepEqual(s.products.map((p) => p.rank), [1, 2, 3, 4, 5]);
   assert.deepEqual(s.products[0], {
     productId: '101',
+    priceKey: '101',
     name: '상품 101',
     price: 1000,
     image: 'https://img/101.jpg',
@@ -85,4 +86,19 @@ test('buildTopicSnapshot keeps the top 5 by rank with slugs and flags', () => {
     isRocket: true,
     isFreeShipping: false,
   });
+});
+
+test('options of one productId get separate histories; old productId history moves to the matching option', () => {
+  const opt = (itemId, name, price) => ({
+    productId: 819,
+    productName: name,
+    productPrice: price,
+    productUrl: `https://link.coupang.com/re/AFFSDP?pageKey=819&itemId=${itemId}&vendorItemId=1`,
+  });
+  const legacy = { updatedAt: '2026-10-01', products: { 819: { name: '물티슈 10개', history: [['2026-10-01', 16200]] } } };
+  const h = recordPrices(legacy, [opt(1, '물티슈 20개', 29000), opt(2, '물티슈 10개', 16200)], '2026-10-02');
+  assert.equal(h.products['819'], undefined);
+  assert.deepEqual(h.products['819-1'].history, [['2026-10-02', 29000]]);
+  assert.deepEqual(h.products['819-2'].history, [['2026-10-01', 16200], ['2026-10-02', 16200]]);
+  assert.equal(h.products['819-2'].productId, '819');
 });

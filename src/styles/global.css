@@ -101,6 +101,8 @@ h1, h2, h3 {
   width: 100%;
   max-width: 320px;
   height: auto;
+  aspect-ratio: 1 / 1;
+  object-fit: contain;
   border-radius: 8px;
   margin-bottom: 0.75rem;
 }
@@ -428,4 +430,29 @@ h1, h2, h3 {
   color: var(--color-muted);
   font-size: 0.75rem;
   text-align: left;
+}
+
+/* Footer links wrap under the copyright line on narrow screens. */
+.footer-inner {
+  flex-wrap: wrap;
+}
+
+.footer-inner .nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1rem;
+}
+
+.footer-inner .nav a {
+  margin-left: 0;
+  font-size: 0.88rem;
+}
+
+.breadcrumb {
+  margin: 0 0 0.25rem;
+  font-size: 0.85rem;
+}
+
+.breadcrumb a {
+  color: var(--color-muted);
 }

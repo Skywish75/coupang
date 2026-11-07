@@ -5,9 +5,12 @@ import AiNotice from '../../components/AiNotice.astro';
 import ProductCard from '../../components/ProductCard.astro';
 import PriceHistory from '../../components/PriceHistory.astro';
 import { getCollection } from 'astro:content';
-import { getPriceStats, productIdFromSlug, formatWon, formatDate } from '../../lib/prices';
+import { getPriceStats, formatWon, formatDate } from '../../lib/prices';
 import { getComparisonForTopic } from '../../lib/compare';
 import { adBottom } from '../../lib/ads';
+import { shortProductName } from '../../lib/names.js';
+import { breadcrumb, org } from '../../lib/seo';
+import { isIndexablePost, postTitle, priceKeyOf } from '../../lib/posts';
 
 export async function getStaticPaths() {
   const posts = await getCollection('blog');
@@ -19,30 +22,77 @@ export async function getStaticPaths() {
 
 const { post } = Astro.props;
 const { Content } = await post.render();
+const site = Astro.site!;
 
 const products = post.data.products.map((product) => {
-  const productId = product.productId ?? productIdFromSlug(product.slug);
-  const stats = getPriceStats(productId);
+  const key = priceKeyOf(product);
+  const stats = getPriceStats(key);
   return {
     ...product,
-    productId,
+    key,
+    stats,
     // Prefer the latest tracked price over the one frozen at publish time.
     price: stats ? formatWon(stats.current) : product.price,
     priceLabel: stats ? `${formatDate(stats.currentDate)} 기준` : product.price && '게시일 기준',
   };
 });
 
+const main = products[0];
+const s = main?.stats;
+const name = shortProductName(main?.title ?? post.data.title);
+const title = postTitle(post);
+// Built from the price data so it stays true as prices change.
+const description =
+  s && s.count >= 3 && !s.unstable
+    ? `${name} 쿠팡 판매가 ${formatWon(s.current)}(${formatDate(s.currentDate)} 기준), 최근 30일 최저 ${formatWon(s.min)}·평균 ${formatWon(s.avg)}. 매일 기록한 가격으로 지금 가격 수준을 확인하세요.`
+    : post.data.description;
+
 const comparison = post.data.tags.map(getComparisonForTopic).find(Boolean);
+const modified = post.data.updatedDate ?? post.data.pubDate;
+const crumbs: [string, string][] = [
+  ['홈', '/'],
+  comparison ? [`${comparison.topic} 가격 비교`, `/compare/${comparison.slug}/`] : ['상품 정리', '/blog/'],
+  [name, Astro.url.pathname],
+];
+const jsonLd = [
+  {
+    '@context': 'https://schema.org',
+    '@type': 'BlogPosting',
+    headline: title,
+    description,
+    inLanguage: 'ko-KR',
+    datePublished: post.data.pubDate.toISOString(),
+    dateModified: modified.toISOString(),
+    mainEntityOfPage: new URL(Astro.url.pathname, site).href,
+    ...(main?.image && { image: [main.image] }),
+    // AI-assisted summaries: credited to the site, never to a made-up person.
+    author: org(site),
+    publisher: org(site),
+  },
+  breadcrumb(site, crumbs),
+];
 ---
-<BaseLayout title={post.data.title} description={post.data.description}>
+<BaseLayout
+  title={title}
+  description={description}
+  type="article"
+  image={main?.image}
+  imageAlt={main?.title}
+  publishedTime={post.data.pubDate}
+  modifiedTime={modified}
+  noindex={!isIndexablePost(post)}
+  jsonLd={jsonLd}
+>
   <article>
-    <h1>{post.data.title}</h1>
+    <nav class="breadcrumb post-meta" aria-label="현재 위치">
+      <a href="/">홈</a> ›
+      {comparison ? <a href={`/compare/${comparison.slug}/`}>{comparison.topic} 가격 비교</a> : <a href="/blog/">상품 정리</a>}
+    </nav>
+    <h1>{title}</h1>
     <p class="post-meta">{post.data.pubDate.toLocaleDateString('ko-KR')}</p>
 
     {post.data.hasAffiliateLinks && <AffiliateDisclosure />}
     {post.data.aiAssisted && <AiNotice />}
-
-    <Content />
 
     {products.map((product) => (
       <>
@@ -54,13 +104,17 @@ const comparison = post.data.tags.map(getComparisonForTopic).find(Boolean);
           description={product.description}
           image={product.image}
         />
-        <PriceHistory productId={product.productId} />
+        <PriceHistory productId={product.key} />
       </>
     ))}
 
+    <Content />
+
     {comparison && (
       <p class="related-compare">
-        <a href={`/compare/${comparison.slug}/`}>{comparison.topic} 인기 상품 TOP {comparison.products.length} 가격 비교 보기 →</a>
+        <a href={`/compare/${comparison.slug}/`}>{comparison.topic} 인기 상품 TOP {comparison.products.length} 가격 비교 →</a>
+        <br />
+        <a href={`/compare/${comparison.slug}/#guide`}>{comparison.topic} 고르는 법 보기 →</a>
       </p>
     )}
 

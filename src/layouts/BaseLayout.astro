@@ -3,14 +3,40 @@ import Header from '../components/Header.astro';
 import Footer from '../components/Footer.astro';
 import '../styles/global.css';
 import { adHead, adTop } from '../lib/ads';
+import { SITE_NAME } from '../lib/seo';
 
 interface Props {
   title: string;
   description: string;
+  /** Root-relative or absolute. Defaults to the 1200×630 site card. */
+  image?: string;
+  imageAlt?: string;
+  type?: 'website' | 'article';
+  publishedTime?: Date;
+  modifiedTime?: Date;
+  /** Keeps the page out of search results (links are still followed). */
+  noindex?: boolean;
+  jsonLd?: object | object[];
 }
 
-const { title, description } = Astro.props;
+const {
+  title,
+  description,
+  image = '/icons/og-default.png',
+  imageAlt,
+  type = 'website',
+  publishedTime,
+  modifiedTime,
+  noindex = false,
+  jsonLd,
+} = Astro.props;
+
 const canonicalURL = new URL(Astro.url.pathname, Astro.site);
+const fullTitle = title.includes(SITE_NAME) ? title : `${title} | ${SITE_NAME}`;
+const ogImage = new URL(image, Astro.site).href;
+// Our own cards (public/icons/og-*.png) are 1200×630; product photos are square.
+const wide = image.startsWith('/icons/og-');
+const ld = jsonLd && JSON.stringify(jsonLd).replace(/</g, '\\u003c');
 ---
 <!doctype html>
 <html lang="ko">
@@ -19,14 +45,25 @@ const canonicalURL = new URL(Astro.url.pathname, Astro.site);
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="canonical" href={canonicalURL} />
-    <title>{title} | 7mall.kr</title>
+    <link rel="alternate" type="application/rss+xml" title={SITE_NAME} href="/rss.xml" />
+    <title>{fullTitle}</title>
     <meta name="description" content={description} />
-    <meta property="og:type" content="website" />
+    {noindex && <meta name="robots" content="noindex, follow" />}
+    <meta property="og:site_name" content={SITE_NAME} />
+    <meta property="og:locale" content="ko_KR" />
+    <meta property="og:type" content={type} />
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
     <meta property="og:url" content={canonicalURL} />
-    <meta name="twitter:card" content="summary" />
+    <meta property="og:image" content={ogImage} />
+    {wide && <meta property="og:image:width" content="1200" />}
+    {wide && <meta property="og:image:height" content="630" />}
+    {imageAlt && <meta property="og:image:alt" content={imageAlt} />}
+    {type === 'article' && publishedTime && <meta property="article:published_time" content={publishedTime.toISOString()} />}
+    {type === 'article' && modifiedTime && <meta property="article:modified_time" content={modifiedTime.toISOString()} />}
+    <meta name="twitter:card" content={wide ? 'summary_large_image' : 'summary'} />
     <meta name="naver-site-verification" content="96ac25b3216e6cd54c6b48f4cc845a951a9b312d" />
+    {ld && <script type="application/ld+json" set:html={ld} />}
     <slot name="head" />
     <Fragment set:html={adHead} />
   </head>

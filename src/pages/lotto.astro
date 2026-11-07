@@ -2,16 +2,52 @@
 import BaseLayout from '../layouts/BaseLayout.astro';
 import { adBottom } from '../lib/ads';
 import telegram from '../../data/telegram.json';
+import results from '../../data/lottoResults.json';
+import { roundFor, drawDate } from '../lib/lotto.js';
+import { breadcrumb } from '../lib/seo';
 
 // Everything on this page runs in the visitor's browser: numbers, QR reading
 // and saved games never reach the Worker, so it costs no Worker requests.
 const numbers = Array.from({ length: 45 }, (_, i) => i + 1);
 // Set by the admin "텔레그램 봇 연결" button; the card stays hidden until then.
 const botUsername = telegram.botUsername;
+
+// Rendered at build time so search engines and no-JS visitors see them; the
+// page script refreshes the round label when it runs.
+const buildRound = roundFor();
+const [, roundMonth, roundDay] = drawDate(buildRound).split('-').map(Number);
+type Result = { date: string; numbers: number[]; bonus: number };
+const latest = Object.entries(results as Record<string, Result>)
+  .map(([round, r]) => ({ round: Number(round), ...r }))
+  .sort((a, b) => b.round - a.round)[0];
+const [, latestMonth, latestDay] = latest ? latest.date.split('-').map(Number) : [];
+const tone = (n: number) => `lotto-ball tone-${Math.min(4, Math.floor((n - 1) / 10))}`;
+
+const site = Astro.site!;
+const description =
+  '이미 산 로또 번호와 빼고 싶은 번호(제외수)를 빼고 6/45 번호를 무작위로 뽑아 줍니다. 용지 QR 인식, 회차별 당첨 확인, 텔레그램 매주 알림. 당첨을 약속하지 않습니다.';
+const jsonLd = [
+  {
+    '@context': 'https://schema.org',
+    '@type': 'WebApplication',
+    name: '로또 번호 생성기 (산 번호 빼고 뽑기)',
+    url: new URL('/lotto/', site).href,
+    description,
+    applicationCategory: 'UtilitiesApplication',
+    operatingSystem: 'Web',
+    inLanguage: 'ko-KR',
+    isAccessibleForFree: true,
+    offers: { '@type': 'Offer', price: '0', priceCurrency: 'KRW' },
+  },
+  breadcrumb(site, [['홈', '/'], ['로또 번호 생성기', '/lotto/']]),
+];
 ---
 <BaseLayout
-  title="로또 번호 추천기 - 산 번호 빼고 랜덤 생성"
-  description="로또 6/45 번호를 무작위로 추천합니다. 이미 산 게임은 용지 QR을 찍거나 직접 입력해 빼고, 원하지 않는 번호도 제외할 수 있어요."
+  title="로또 번호 생성기 - 산 번호·제외수 빼고 랜덤 추천 (용지 QR 인식)"
+  description={description}
+  image="/icons/og-lotto.png"
+  imageAlt="로또 번호 추천기 - 이미 산 번호는 빼고 남은 번호로 랜덤 생성"
+  jsonLd={jsonLd}
 >
   <Fragment slot="head">
     {/* Lets phones add this page to the home screen as an app-like shortcut. */}
@@ -49,7 +85,7 @@ const botUsername = telegram.botUsername;
       </p>
       <p class="lotto-story-sign">— 7mall.kr 운영자</p>
     </div>
-    <p class="lotto-round" id="round-label">&nbsp;</p>
+    <p class="lotto-round" id="round-label">이번 회차: 제{buildRound}회 · {roundMonth}월 {roundDay}일(토) 추첨 · 판매는 토요일 오후 8시까지</p>
     <p class="lotto-warning" role="note">
       <strong>⚠️ 무작위로 만든 조합입니다. 당첨을 약속하지 않습니다.</strong>
       <span>번호를 빼거나 골라도 한 게임의 1등 확률은 언제나 8,145,060분의 1로 같습니다.</span>
@@ -136,11 +172,51 @@ const botUsername = telegram.botUsername;
       </section>
     )}
 
+    {latest && (
+      <section class="lotto-card" aria-labelledby="last-title">
+        <h2 id="last-title">제{latest.round}회 당첨번호 <small>{latestMonth}월 {latestDay}일 추첨</small></h2>
+        <div class="lotto-balls">
+          {latest.numbers.map((n) => <span class={tone(n)}>{n}</span>)}
+          <span class="h-plus" aria-label="보너스">+</span>
+          <span class={tone(latest.bonus)}>{latest.bonus}</span>
+        </div>
+        <p class="lotto-hint">토요일 밤에 새 회차 결과를 반영합니다. 정확한 당첨 확인은 동행복권에서 해 주세요.</p>
+      </section>
+    )}
+
     <section class="lotto-card" aria-labelledby="history-title">
       <h2 id="history-title">당첨 확인 기록</h2>
       <p class="lotto-hint">이 브라우저에서 회차마다 마지막으로 뽑은 번호를 그 회차 당첨번호와 맞춰 봅니다. 당첨번호는 추첨일 밤에 반영돼요.</p>
       <p class="lotto-summary" id="history-summary"></p>
       <ol class="lotto-history" id="history"></ol>
+    </section>
+
+    <section class="lotto-card lotto-faq" aria-labelledby="faq-title">
+      <h2 id="faq-title">자주 묻는 질문</h2>
+      <details>
+        <summary>산 번호를 빼고 뽑으면 당첨 확률이 올라가나요?</summary>
+        <p>아니요. 어떤 6개 조합이든 1등 확률은 8,145,060분의 1로 같습니다. 이미 산 게임과 번호가 겹치지 않게 나눠 사고 싶을 때 쓰는 도구입니다.</p>
+      </details>
+      <details>
+        <summary>빼고 싶은 번호(제외수)는 몇 개까지 고를 수 있나요?</summary>
+        <p>남은 번호가 6개 이상이면 됩니다. 최대 39개까지 뺄 수 있어요.</p>
+      </details>
+      <details>
+        <summary>용지 QR 사진이 서버로 전송되나요?</summary>
+        <p>아니요. 사진은 이 기기의 브라우저 안에서만 읽고 어디에도 보내지 않습니다. 산 번호와 뽑은 번호도 이 브라우저에만 저장됩니다.</p>
+      </details>
+      <details>
+        <summary>인터넷으로 산 로또도 뺄 수 있나요?</summary>
+        <p>네. "직접 입력"에 한 줄에 한 게임씩 번호 6개를 적으면 됩니다.</p>
+      </details>
+      <details>
+        <summary>텔레그램 알림은 언제 오고, 어떻게 끄나요?</summary>
+        <p>매주 토요일 오전 10시쯤 5게임과 지난주 결과를 보내 드려요. 봇에 /stop 을 보내면 바로 꺼지고 저장된 정보도 지워집니다.</p>
+      </details>
+      <details>
+        <summary>휴대폰 홈 화면에 추가할 수 있나요?</summary>
+        <p>네. 휴대폰에서 이 페이지 위쪽의 "홈 화면에 바로가기 추가" 버튼을 누르면 앱처럼 바로 열 수 있어요.</p>
+      </details>
     </section>
 
     <aside class="ai-notice lotto-notice">
@@ -932,6 +1008,26 @@ const botUsername = telegram.botUsername;
     background: var(--color-accent);
     color: #fff;
     font-size: 0.8rem;
+  }
+
+  .lotto-faq details {
+    border-top: 1px solid var(--color-border);
+    padding: 0.7rem 0;
+  }
+
+  .lotto-faq details:last-child {
+    padding-bottom: 0;
+  }
+
+  .lotto-faq summary {
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .lotto-faq details p {
+    margin: 0.5rem 0 0;
+    color: #374151;
+    font-size: 0.93rem;
   }
 
   .lotto-hint,

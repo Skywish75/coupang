@@ -12,7 +12,7 @@ interface Props {
 const { slug, title, price, priceLabel, description, image } = Astro.props;
 ---
 <div class="product-card">
-  {image && <img src={image} alt={title} loading="lazy" />}
+  {image && <img src={image} alt={title} width="320" height="320" loading="lazy" decoding="async" />}
   <h3>{title}</h3>
   {price && (
     <p class="price">

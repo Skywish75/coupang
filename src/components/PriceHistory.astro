@@ -34,7 +34,7 @@ if (stats && stats.series.length >= 2) {
         <dt>현재가</dt>
         <dd>{formatWon(stats.current)}</dd>
       </div>
-      {stats.count >= 2 && (
+      {stats.count >= 2 && !stats.unstable && (
         <>
           <div>
             <dt>30일 최저가</dt>

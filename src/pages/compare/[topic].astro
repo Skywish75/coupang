@@ -6,6 +6,8 @@ import { getCollection } from 'astro:content';
 import { getComparisons, type Comparison } from '../../lib/compare';
 import { getPriceStats, formatWon, formatDate } from '../../lib/prices';
 import { adBottom } from '../../lib/ads';
+import { breadcrumb } from '../../lib/seo';
+import { postTitle, postUrl } from '../../lib/posts';
 
 export function getStaticPaths() {
   return getComparisons().map((comparison) => ({
@@ -19,7 +21,22 @@ const { topic, updatedAt } = comparison;
 const n = comparison.products.length;
 const [year, month] = updatedAt.split('-').map(Number);
 
-const rows = comparison.products.map((p) => ({ ...p, stats: getPriceStats(p.productId) }));
+const rows = comparison.products.map((p) => ({ ...p, stats: getPriceStats(p.priceKey ?? p.productId) }));
+const site = Astro.site!;
+const prices = rows.map((p) => p.price);
+const description = `쿠팡 ${topic} 인기 ${n}개 현재가 ${formatWon(Math.min(...prices))}~${formatWon(Math.max(...prices))}(${formatDate(updatedAt)} 기준). 매일 기록한 30일 최저가와 배송 조건, 고르는 법까지 한 번에 비교합니다.`;
+const others = getComparisons().filter((c) => c.slug !== comparison.slug);
+const jsonLd = [
+  {
+    '@context': 'https://schema.org',
+    '@type': 'ItemList',
+    name: `${topic} 인기 상품 TOP ${n} (쿠팡 검색 순)`,
+    itemListOrder: 'https://schema.org/ItemListOrderAscending',
+    numberOfItems: n,
+    itemListElement: rows.map((p) => ({ '@type': 'ListItem', position: p.rank, name: p.name })),
+  },
+  breadcrumb(site, [['홈', '/'], ['가격 비교', '/compare/'], [`${topic} 가격 비교`, Astro.url.pathname]]),
+];
 
 const guide = (await getCollection('guides')).find((g) => g.data.topic === topic);
 const GuideContent = guide ? (await guide.render()).Content : null;
@@ -30,9 +47,13 @@ const relatedPosts = (await getCollection('blog', (post) => post.data.tags.inclu
 ---
 <BaseLayout
   title={`${topic} 인기 상품 TOP ${n} 가격 비교 (${year}년 ${month}월)`}
-  description={`쿠팡 ${topic} 인기 상품 ${n}개의 현재가, 최근 30일 최저가, 배송 조건을 한눈에 비교합니다.`}
+  description={description}
+  jsonLd={jsonLd}
 >
   <article>
+    <nav class="breadcrumb post-meta" aria-label="현재 위치">
+      <a href="/">홈</a> › <a href="/compare/">가격 비교</a>
+    </nav>
     <h1>{topic} 인기 상품 TOP {n} 가격 비교</h1>
     <p class="post-meta">{formatDate(updatedAt)} 업데이트 · 매일 오전 9시 자동 갱신</p>
 
@@ -68,10 +89,14 @@ const relatedPosts = (await getCollection('blog', (post) => post.data.tags.inclu
               <td class="num price-cell" data-label="현재가">{formatWon(p.price)}</td>
               <td class="num low-cell" data-label="30일 최저가">
                 {p.stats && p.stats.count >= 2 ? (
-                  <>
-                    {formatWon(p.stats.min)}
-                    {p.stats.max > p.stats.min && p.stats.current <= p.stats.min && <span class="badge">최저가</span>}
-                  </>
+                  p.stats.unstable ? (
+                    <span class="muted" title="30일 안에 가격이 2배 넘게 바뀌어 옵션·판매자가 바뀌었을 수 있어요">변동 큼</span>
+                  ) : (
+                    <>
+                      {formatWon(p.stats.min)}
+                      {p.stats.max > p.stats.min && p.price <= p.stats.min && <span class="badge">최저가</span>}
+                    </>
+                  )
                 ) : (
                   <span class="muted">기록 중</span>
                 )}
@@ -95,7 +120,7 @@ const relatedPosts = (await getCollection('blog', (post) => post.data.tags.inclu
     </p>
 
     {GuideContent && (
-      <section>
+      <section id="guide">
         <h2>{topic} 고르는 법</h2>
         <AiNotice kind="guide" />
         <GuideContent />
@@ -107,7 +132,18 @@ const relatedPosts = (await getCollection('blog', (post) => post.data.tags.inclu
         <h2>{topic} 상품 정리 글</h2>
         <ul class="related-list">
           {relatedPosts.map((post) => (
-            <li><a href={`/blog/${post.slug}`}>{post.data.title}</a></li>
+            <li><a href={postUrl(post)}>{postTitle(post)}</a></li>
+          ))}
+        </ul>
+      </section>
+    )}
+
+    {others.length > 0 && (
+      <section>
+        <h2>다른 카테고리 가격 비교</h2>
+        <ul class="related-list">
+          {others.map((c) => (
+            <li><a href={`/compare/${c.slug}/`}>{c.topic} 인기 상품 TOP {c.products.length} 가격 비교</a></li>
           ))}
         </ul>
       </section>

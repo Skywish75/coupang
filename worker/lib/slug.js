@@ -12,3 +12,11 @@ export function slugify(text) {
 export function productSlug(product) {
   return `${slugify(product.productName)}-${product.productId}`;
 }
+
+// Key in data/priceHistory.json. Coupang reuses one productId for every
+// option of a listing (e.g. 물티슈 10개 / 20개), so the option's itemId from
+// productUrl is added; without it the options' prices end up in one history.
+export function priceKey(product) {
+  const itemId = String(product.productUrl ?? '').match(/[?&]itemId=(\d+)/)?.[1];
+  return itemId ? `${product.productId}-${itemId}` : String(product.productId ?? '');
+}

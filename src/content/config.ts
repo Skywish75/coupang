@@ -20,6 +20,8 @@ const blog = defineCollection({
           // Coupang product id, used to look up /data/priceHistory.json.
           // Older posts omit it; it's then parsed from the slug suffix.
           productId: z.string().optional(),
+          // productId + option itemId, the key in /data/priceHistory.json.
+          priceKey: z.string().optional(),
           title: z.string(),
           price: z.string().optional(),
           description: z.string().optional(),
