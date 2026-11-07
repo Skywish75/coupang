@@ -6,6 +6,8 @@ import { getClickStats } from './lib/clicks.js';
 import { getAds, saveAds } from './lib/ads.js';
 import { slugify } from './lib/slug.js';
 import { shiftDate } from './lib/dates.js';
+import { connectBot, sendWeekly, getTelegramStatus } from './lib/telegram.js';
+import { updateLottoResults } from './lib/lottoResults.js';
 
 function escapeHtml(str) {
   return String(str).replace(/[&<>"']/g, (c) => ({
@@ -122,15 +124,47 @@ function renderAdsForm(ads) {
     ${ads.updatedAt ? `<p class="muted">마지막 저장: ${kstTime(ads.updatedAt)}</p>` : ''}`;
 }
 
+function renderLotto(status) {
+  if (status.error) {
+    return `<p class="notice">상태를 불러오지 못했습니다: ${escapeHtml(status.error)}</p>`;
+  }
+  const t = status.value;
+  const connected = t.webhookUrl.endsWith('/telegram/webhook');
+  const steps = t.tokenSet
+    ? ''
+    : `<ol class="help">
+        <li>텔레그램에서 <b>@BotFather</b>에게 <code>/newbot</code>을 보내 봇을 만들고 토큰을 받습니다.</li>
+        <li>Cloudflare 대시보드 → Workers &amp; Pages → coupang → 설정 → 변수 및 비밀(Variables and Secrets)에서
+            <b>비밀(Secret)</b> 이름 <code>TELEGRAM_BOT_TOKEN</code>, 값에 토큰을 넣고 배포합니다.</li>
+        <li>이 페이지를 새로고침한 뒤 아래 <b>텔레그램 봇 연결</b>을 누릅니다.</li>
+      </ol>`;
+  return `
+    <div class="cards">
+      ${card('봇 토큰', t.tokenSet ? '등록됨' : '없음')}
+      ${card('웹훅', connected ? '연결됨' : '미연결', t.webhookError ? `최근 오류: ${t.webhookError}` : '')}
+      ${card('구독자', t.subscribers === null ? '-' : num(t.subscribers), `제${t.round}회 발송 ${num(t.sentThisRound)}명`)}
+      ${card('저장된 당첨번호', t.latestResult ? `제${t.latestResult}회` : '없음', '토 22시·일 0시/10시 자동 수집')}
+    </div>
+    ${t.botUsername ? `<p>봇: <a href="https://t.me/${escapeHtml(t.botUsername)}" target="_blank" rel="noopener">@${escapeHtml(t.botUsername)}</a> · /lotto 페이지에 "텔레그램으로 매주 받기" 버튼이 표시됩니다.</p>` : ''}
+    ${steps}
+    <p class="muted">매주 토요일 오전 10~12시에 구독자에게 그 주 추천 번호 5게임과 지난주 결과를 보냅니다(무료 플랜 제한으로 매시 최대 40명씩).</p>
+    <div class="row">
+      <form method="post" action="/admin/api/telegram/connect"><button type="submit" ${t.tokenSet ? '' : 'disabled'}>텔레그램 봇 연결</button></form>
+      <form method="post" action="/admin/api/telegram/send"><button type="submit" ${connected ? '' : 'disabled'}>이번 회차 번호 지금 보내기</button></form>
+      <form method="post" action="/admin/api/lotto/results"><button type="submit">당첨번호 지금 가져오기</button></form>
+    </div>`;
+}
+
 const settle = (promise) => promise.then((value) => ({ value }), (err) => ({ error: err.message }));
 
 async function renderPage(env, notice) {
-  const [topics, logs, ads, stats, clicks] = await Promise.all([
+  const [topics, logs, ads, stats, clicks, lotto] = await Promise.all([
     getTopics(env),
     getLogs(env),
     getAds(env),
     settle(getSiteStats(env)),
     settle(getClickStats(env)),
+    settle(getTelegramStatus(env)),
   ]);
 
   const logRows = logs
@@ -163,6 +197,10 @@ async function renderPage(env, notice) {
   label { display: block; font-weight: 600; margin-top: 1.25rem; }
   .help, .muted { color: #6b7280; font-size: 0.8rem; margin: 0.25rem 0 0.4rem; }
   button { margin-top: 1rem; padding: 0.6rem 1.1rem; cursor: pointer; border: none; border-radius: 6px; background: #ff6f0f; color: #fff; font-weight: 600; }
+  button:disabled { background: #d1d5db; cursor: not-allowed; }
+  .row { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+  .row form { margin: 0; }
+  ol.help { padding-left: 1.2rem; font-size: 0.85rem; color: #374151; }
   .notice { background: #fff7ed; border: 1px solid #fed7aa; padding: 0.75rem 1rem; border-radius: 8px; }
   .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 0.75rem; }
   .card { border: 1px solid #e5e7eb; border-radius: 10px; padding: 0.8rem 0.9rem; }
@@ -173,7 +211,7 @@ async function renderPage(env, notice) {
 </head>
 <body>
   <h1>7mall 자동발행 관리자</h1>
-  <nav><a href="#stats">통계</a><a href="#run">지금 실행</a><a href="#topics">키워드</a><a href="#ads">광고</a><a href="#logs">로그</a></nav>
+  <nav><a href="#stats">통계</a><a href="#run">지금 실행</a><a href="#topics">키워드</a><a href="#ads">광고</a><a href="#lotto">로또·텔레그램</a><a href="#logs">로그</a></nav>
   ${notice ? `<p class="notice">${escapeHtml(notice)}</p>` : ''}
 
   <section id="stats">
@@ -200,6 +238,11 @@ async function renderPage(env, notice) {
   <section id="ads">
     <h2>광고 코드</h2>
     ${renderAdsForm(ads)}
+  </section>
+
+  <section id="lotto">
+    <h2>로또 번호 · 텔레그램</h2>
+    ${renderLotto(lotto)}
   </section>
 
   <section id="logs">
@@ -295,6 +338,50 @@ export async function handleAdmin(request, env) {
     const form = await request.formData();
     await saveAds(env, Object.fromEntries(form));
     return htmlResponse(await renderPage(env, '광고 설정을 저장했습니다. 자동 빌드 후 2~3분 뒤 사이트에 반영됩니다.'));
+  }
+
+  if (url.pathname === '/admin/api/telegram/connect' && request.method === 'POST') {
+    try {
+      const r = await connectBot(env, url.origin);
+      return htmlResponse(
+        await renderPage(
+          env,
+          `@${r.username} 봇을 연결했습니다.` +
+            (r.committed ? ' /lotto 페이지의 텔레그램 버튼은 자동 빌드 후 2~3분 뒤 나타납니다.' : '')
+        )
+      );
+    } catch (err) {
+      return htmlResponse(await renderPage(env, `봇 연결 실패: ${err.message}`), 500);
+    }
+  }
+
+  if (url.pathname === '/admin/api/telegram/send' && request.method === 'POST') {
+    try {
+      const r = await sendWeekly(env);
+      const msg = r.skipped
+        ? '봇 토큰 또는 DB가 설정되지 않았습니다.'
+        : `제${r.round}회 번호를 ${r.sent}명에게 보냈습니다.` +
+          (r.removed ? ` 봇을 차단한 ${r.removed}명은 정리했습니다.` : '') +
+          (r.failed ? ` ${r.failed}명은 실패했습니다.` : '') +
+          (r.remaining ? ` 남은 ${r.remaining}명은 다시 누르거나 다음 자동 실행 때 보냅니다.` : '');
+      return htmlResponse(await renderPage(env, msg));
+    } catch (err) {
+      return htmlResponse(await renderPage(env, `발송 실패: ${err.message}`), 500);
+    }
+  }
+
+  if (url.pathname === '/admin/api/lotto/results' && request.method === 'POST') {
+    try {
+      const r = await updateLottoResults(env);
+      const msg = r.added.length
+        ? `제${r.added.join(', ')}회 당첨번호를 저장했습니다. 자동 빌드 후 2~3분 뒤 /lotto 페이지에 반영됩니다.`
+        : r.missing.length
+          ? `제${r.latest}회 당첨번호가 아직 공개되지 않았습니다(보통 토요일 21시쯤 공개).`
+          : `이미 최신(제${r.latest}회)까지 저장되어 있습니다.`;
+      return htmlResponse(await renderPage(env, msg));
+    } catch (err) {
+      return htmlResponse(await renderPage(env, `당첨번호 가져오기 실패: ${err.message}`), 500);
+    }
   }
 
   return htmlResponse(await renderPage(env));

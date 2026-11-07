@@ -56,6 +56,6 @@ export async function getSiteStats(env) {
     comparisons: Object.fromEntries(snapshotList),
     comparisonCount: snapshotList.length,
     guideCount: snapshotList.filter(([, s]) => s.hasGuide).length,
-    lastRun: logs[0] ?? null,
+    lastRun: logs.find((l) => l.kind !== 'lotto') ?? null, // lotto jobs log too
   };
 }

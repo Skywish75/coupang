@@ -13,9 +13,13 @@ GITHUB_BRANCH = "main"
 # (https://ai.google.dev/gemini-api/docs/pricing 에서 Free tier 표시 확인)
 GEMINI_MODEL = "gemini-3.6-flash"
 
-# 매일 00:00 UTC(=한국시간 09:00)에 자동 발행 1건 실행. cron 표현식은 필요에 맞게 조정.
+# cron은 하나만 씁니다(무료 플랜은 계정당 cron 5개 제한). 실행 시각(한국시간)에 따라
+# worker/lib/schedule.js 가 할 일을 고릅니다. 표현식을 바꾸면 schedule.js도 같이 수정하세요.
+#   매일 09:00            자동 발행 1건 + 가격·비교 데이터 갱신
+#   토요일 10:00~12:00     텔레그램 로또 추천 번호 주간 발송 (매시 최대 40명씩)
+#   토 22:00 / 일 00:00·10:00  그 주 로또 당첨번호 가져오기
 [triggers]
-crons = ["0 0 * * *"]
+crons = ["0 0,1,2,3,13,15 * * *"]
 
 # Cloudflare 대시보드(Storage & Databases > KV)에서 네임스페이스를 만든 뒤
 # 아래 id를 실제 값으로 교체하세요. (README의 설정 체크리스트 참고)

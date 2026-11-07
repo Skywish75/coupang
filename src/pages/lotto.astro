@@ -1,0 +1,1175 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { adBottom } from '../lib/ads';
+import telegram from '../../data/telegram.json';
+
+// Everything on this page runs in the visitor's browser: numbers, QR reading
+// and saved games never reach the Worker, so it costs no Worker requests.
+const numbers = Array.from({ length: 45 }, (_, i) => i + 1);
+// Set by the admin "텔레그램 봇 연결" button; the card stays hidden until then.
+const botUsername = telegram.botUsername;
+---
+<BaseLayout
+  title="로또 번호 추천기 - 산 번호 빼고 랜덤 생성"
+  description="로또 6/45 번호를 무작위로 추천합니다. 이미 산 게임은 용지 QR을 찍거나 직접 입력해 빼고, 원하지 않는 번호도 제외할 수 있어요."
+>
+  <div class="lotto">
+    <h1>로또 번호 추천기</h1>
+    <div class="lotto-story">
+      <p class="lotto-story-title">이 페이지를 만든 이유</p>
+      <p>
+        자동으로 로또를 사 보면 45개 번호 중 1~2개도 맞지 않는 주가 대부분이었습니다.
+        그래서 '이번 주에 자동으로 받은 번호는 일단 다 빼고, 남은 번호에서 6개를 골라 보면 어떨까?' 하는 생각으로 이 페이지를 만들었습니다.
+        용지 QR을 찍거나 번호를 입력하면 산 번호를 빼고, 나머지 번호에서 새 조합을 무작위로 뽑아 줍니다.
+      </p>
+      <p>
+        물론 로또는 매주 새로 추첨하기 때문에, 번호를 빼고 뽑는다고 당첨 확률이 올라가지는 않습니다.
+        이미 산 게임과 겹치지 않는 번호로 나눠 사 보고 싶을 때 가볍게 써 보세요.
+      </p>
+      <p class="lotto-story-sign">— 7mall.kr 운영자</p>
+    </div>
+    <p class="lotto-round" id="round-label">&nbsp;</p>
+    <p class="lotto-warning" role="note">
+      <strong>⚠️ 무작위로 만든 조합입니다. 당첨을 약속하지 않습니다.</strong>
+      <span>번호를 빼거나 골라도 한 게임의 1등 확률은 언제나 8,145,060분의 1로 같습니다.</span>
+    </p>
+
+    <section class="lotto-card" aria-labelledby="bought-title">
+      <h2 id="bought-title"><span class="lotto-step">1</span>이미 산 게임 <small>선택</small></h2>
+      <p class="lotto-hint">용지의 QR을 찍으면 번호가 자동으로 들어갑니다. 인터넷으로 샀다면 번호를 직접 입력하세요.</p>
+      <div class="lotto-actions">
+        <input id="qr-file" class="visually-hidden qr-input" type="file" accept="image/*" />
+        <label class="lotto-btn" for="qr-file">용지 QR 찍기 · 사진 선택</label>
+      </div>
+
+      <label for="typed" class="lotto-label">직접 입력 <span class="muted">(한 줄에 한 게임)</span></label>
+      <textarea id="typed" rows="3" placeholder={'3 11 19 27 35 42\n05, 14, 21, 29, 32, 40'}></textarea>
+      <div class="lotto-actions">
+        <button type="button" class="lotto-btn" id="add-typed">입력한 게임 추가</button>
+      </div>
+      <p class="lotto-status" id="bought-status" role="status" aria-live="polite"></p>
+
+      <ol class="lotto-games" id="bought-list" aria-label="산 게임 목록"></ol>
+      <div class="lotto-bought-opts" id="bought-opts" hidden>
+        <label class="lotto-check">
+          <input type="checkbox" id="exclude-bought" checked />
+          산 게임에 나온 번호는 추천에서 빼기
+        </label>
+        <p class="lotto-hint">끄면 번호는 다시 쓰되, 산 게임과 똑같은 조합만 피합니다.</p>
+        <button type="button" class="lotto-link" id="clear-bought">산 게임 모두 지우기</button>
+      </div>
+    </section>
+
+    <section class="lotto-card" aria-labelledby="ex-title">
+      <h2 id="ex-title"><span class="lotto-step">2</span>빼고 싶은 번호 <small>선택</small></h2>
+      <p class="lotto-hint">누르면 제외되고, 다시 누르면 풀립니다.</p>
+      <div class="lotto-grid" id="grid" role="group" aria-label="1부터 45까지 번호">
+        {numbers.map((n) => (
+          <button type="button" class="lotto-num" data-n={n} aria-pressed="false">{n}</button>
+        ))}
+      </div>
+      <p class="lotto-legend">
+        <span><i class="key key-mine"></i>직접 뺀 번호</span>
+        <span><i class="key key-bought"></i>산 게임에 나온 번호</span>
+      </p>
+      <button type="button" class="lotto-link" id="clear-excluded" hidden>직접 뺀 번호 모두 풀기</button>
+    </section>
+
+    <section class="lotto-card" aria-labelledby="draw-title">
+      <h2 id="draw-title"><span class="lotto-step">3</span>번호 뽑기</h2>
+      <p class="lotto-summary" id="summary"></p>
+      <div class="lotto-actions">
+        <label for="count" class="visually-hidden">게임 수</label>
+        <select id="count">
+          <option value="1">1게임</option>
+          <option value="2">2게임</option>
+          <option value="3">3게임</option>
+          <option value="4">4게임</option>
+          <option value="5" selected>5게임</option>
+        </select>
+        <button type="button" class="lotto-btn lotto-btn-primary" id="draw">번호 추천받기</button>
+      </div>
+      <p class="lotto-status" id="draw-status" role="status" aria-live="polite"></p>
+      <ol class="lotto-games lotto-result" id="result" aria-label="추천 번호"></ol>
+
+      <div class="lotto-share" id="share" hidden>
+        <p class="lotto-result-note">⚠️ 무작위 조합이며 당첨을 약속하지 않습니다.</p>
+        <div class="lotto-actions">
+          <button type="button" class="lotto-btn" id="share-native" hidden>카카오톡 · 텔레그램으로 보내기</button>
+          <a class="lotto-btn" id="share-telegram" href="https://t.me/share/url" target="_blank" rel="noopener">텔레그램으로 보내기</a>
+          <button type="button" class="lotto-btn" id="share-copy">번호 복사</button>
+        </div>
+        <p class="lotto-hint" id="share-hint"></p>
+      </div>
+    </section>
+
+    {botUsername && (
+      <section class="lotto-card lotto-telegram" aria-labelledby="tg-title">
+        <h2 id="tg-title">텔레그램으로 매주 받기</h2>
+        <p>매주 토요일 오전 10시쯤 그 주 추천 번호 5게임과 지난주 결과를 보내 드려요. 이미 산 번호를 봇에게 보내면 그 번호를 빼고 다시 뽑아 줍니다.</p>
+        <a class="lotto-btn lotto-btn-telegram" href={`https://t.me/${botUsername}?start=lotto`} target="_blank" rel="noopener">텔레그램에서 알림 받기</a>
+        <p class="lotto-hint">언제든 /stop 을 보내 끌 수 있어요. 보내 드리는 번호도 무작위 조합이며 당첨을 약속하지 않습니다.</p>
+      </section>
+    )}
+
+    <section class="lotto-card" aria-labelledby="history-title">
+      <h2 id="history-title">당첨 확인 기록</h2>
+      <p class="lotto-hint">이 브라우저에서 회차마다 마지막으로 뽑은 번호를 그 회차 당첨번호와 맞춰 봅니다. 당첨번호는 추첨일 밤에 반영돼요.</p>
+      <p class="lotto-summary" id="history-summary"></p>
+      <ol class="lotto-history" id="history"></ol>
+    </section>
+
+    <aside class="ai-notice lotto-notice">
+      <ul>
+        <li>산 번호를 빼고 뽑으면 새 게임이 산 게임과 겹치지 않게 나뉠 뿐, 게임마다의 당첨 확률은 그대로입니다. 지난 추첨 결과도 다음 추첨에 영향을 주지 않습니다.</li>
+        <li>용지 사진은 이 기기 안에서만 읽고 어디에도 보내지 않습니다. 입력한 번호와 뽑은 번호는 이 브라우저에만 저장됩니다. 산 게임은 추첨이 끝나면 자동으로 지워집니다.</li>
+        <li>만 19세 미만은 복권을 살 수 없습니다. 이 페이지는 동행복권과 관련이 없습니다.</li>
+        <li>복권 구매가 지나치다고 느껴지면 한국도박문제예방치유원(국번 없이 1336)에서 상담받을 수 있습니다.</li>
+      </ul>
+    </aside>
+
+    <div class="ad-slot" set:html={adBottom} />
+  </div>
+</BaseLayout>
+
+<script>
+  import {
+    MAX,
+    GAME_LABELS,
+    roundFor,
+    drawDate,
+    parseTicketQr,
+    parseTypedGames,
+    generateGames,
+    shareText,
+    gameKey,
+    reviewHistory,
+  } from '../lib/lotto.js';
+  // Draw results baked in at build time (updated every Saturday night).
+  import results from '../../data/lottoResults.json';
+
+  const STORE_KEY = 'lotto:v1';
+  const HISTORY_KEY = 'lotto:history:v1';
+  const HISTORY_ROUNDS = 52;
+  const HISTORY_SHOWN = 12;
+  const round = roundFor();
+  const pageUrl = `${location.origin}/lotto/`;
+  const $ = (id) => document.getElementById(id);
+
+  // Saved per browser only. Games from finished draws are dropped on load.
+  const state = load();
+  let drawn = [];
+  let message = '';
+
+  function load() {
+    const fresh = { bought: [], excluded: [], excludeBought: true, count: 5 };
+    try {
+      const saved = JSON.parse(localStorage.getItem(STORE_KEY) || 'null');
+      if (!saved) return fresh;
+      return {
+        bought: (saved.bought || []).filter((g) => g && g.round >= round && Array.isArray(g.nums) && g.nums.length === 6),
+        excluded: (saved.excluded || []).filter((n) => Number.isInteger(n) && n >= 1 && n <= MAX),
+        excludeBought: saved.excludeBought !== false,
+        count: [1, 2, 3, 4, 5].includes(saved.count) ? saved.count : 5,
+      };
+    } catch {
+      return fresh;
+    }
+  }
+
+  function save() {
+    try {
+      localStorage.setItem(STORE_KEY, JSON.stringify(state));
+    } catch {
+      // Private mode or blocked storage: the page still works for this visit.
+    }
+  }
+
+  // Draw history: the last set drawn in each round, newest first.
+  function loadHistory() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
+      return Array.isArray(saved)
+        ? saved.filter((h) => h && Number.isInteger(h.round) && Array.isArray(h.games) && h.games.length)
+        : [];
+    } catch {
+      return [];
+    }
+  }
+
+  let history = loadHistory();
+
+  function recordDraw(games) {
+    history = [{ round, at: new Date().toISOString(), games }, ...history.filter((h) => h.round !== round)].slice(
+      0,
+      HISTORY_ROUNDS
+    );
+    try {
+      localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+    } catch {
+      // Not saved; the history just won't include this draw.
+    }
+    renderHistory();
+  }
+
+  const monthDay = (date) => {
+    const [, m, d] = date.split('-').map(Number);
+    return `${m}월 ${d}일`;
+  };
+  const kstMonthDay = (iso) =>
+    new Date(iso).toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', timeZone: 'Asia/Seoul' });
+
+  function ballLine(label, nums, { hits, bonus } = {}) {
+    const line = document.createElement('div');
+    line.className = 'h-line';
+    const tag = document.createElement('span');
+    tag.className = 'h-label';
+    tag.textContent = label;
+    const balls = document.createElement('span');
+    balls.className = 'lotto-balls';
+    nums.forEach((n, i) => {
+      const b = ball(n, i);
+      if (hits && !hits.has(n)) b.classList.add('is-miss');
+      balls.append(b);
+    });
+    if (bonus) {
+      const plus = document.createElement('span');
+      plus.className = 'h-plus';
+      plus.textContent = '+';
+      balls.append(plus, ball(bonus, 6));
+    }
+    line.append(tag, balls);
+    return line;
+  }
+
+  function renderHistory() {
+    const list = $('history');
+    list.replaceChildren();
+    const reviewed = reviewHistory(history, results);
+    const done = reviewed.filter((h) => !h.pending);
+    const totalGames = done.reduce((sum, h) => sum + h.games.length, 0);
+    const totalWins = done.reduce((sum, h) => sum + h.wins.length, 0);
+    $('history-summary').textContent = history.length
+      ? done.length
+        ? `결과가 나온 ${done.length}개 회차 · 추천 ${totalGames}게임 중 당첨 ${totalWins}게임`
+        : '아직 추첨 결과가 나온 회차가 없어요.'
+      : '아직 기록이 없어요. 번호를 뽑으면 추첨이 끝난 뒤 여기서 결과를 볼 수 있어요.';
+
+    for (const h of reviewed.slice(0, HISTORY_SHOWN)) {
+      const li = document.createElement('li');
+      const head = document.createElement('div');
+      head.className = 'h-head';
+      const title = document.createElement('strong');
+      const meta = document.createElement('span');
+      meta.className = 'h-meta';
+      meta.textContent = `추천일 ${kstMonthDay(h.at)} · ${h.games.length}게임`;
+
+      if (h.pending) {
+        li.className = 'h-item is-pending';
+        title.textContent = `제${h.round}회 · ${monthDay(drawDate(h.round))} 추첨 후 확인`;
+        head.append(title, meta);
+        li.append(head);
+      } else if (h.wins.length) {
+        li.className = 'h-item is-win';
+        const ranks = [...new Set(h.wins.map((w) => w.rank))].sort().map((r) => `${r}등`);
+        title.textContent = `제${h.round}회 · ${ranks.join(', ')} 당첨`;
+        head.append(title, meta);
+        li.append(head);
+        for (const w of h.wins) {
+          const label = `${GAME_LABELS[h.checks.indexOf(w)]} · ${w.rank}등`;
+          // A 2nd-prize game also lights up the bonus number it matched.
+          const hits = new Set(w.bonus ? [...w.matched, h.result.bonus] : w.matched);
+          li.append(ballLine(label, w.game, { hits }));
+        }
+        li.append(ballLine('당첨 번호', h.result.numbers, { bonus: h.result.bonus }));
+      } else {
+        li.className = 'h-item is-miss';
+        title.textContent = `제${h.round}회 · 당첨 없음 (최고 ${h.best}개 일치)`;
+        head.append(title, meta);
+        li.append(head);
+      }
+      list.append(li);
+    }
+  }
+
+  function setStatus(id, text, tone = '') {
+    const el = $(id);
+    el.textContent = text;
+    el.dataset.tone = tone;
+  }
+
+  const boughtNumbers = () => new Set(state.bought.flatMap((g) => g.nums));
+
+  function excludedSet() {
+    const set = new Set(state.excluded);
+    if (state.excludeBought) boughtNumbers().forEach((n) => set.add(n));
+    return set;
+  }
+
+  function ball(n, i) {
+    const el = document.createElement('span');
+    el.className = `lotto-ball tone-${Math.min(4, Math.floor((n - 1) / 10))}`;
+    el.style.setProperty('--i', String(i));
+    el.textContent = String(n);
+    return el;
+  }
+
+  function gameRow(label, nums, row = 0) {
+    const li = document.createElement('li');
+    li.className = 'lotto-game';
+    li.style.setProperty('--row', String(row));
+    const tag = document.createElement('span');
+    tag.className = 'lotto-tag';
+    tag.textContent = label;
+    const balls = document.createElement('span');
+    balls.className = 'lotto-balls';
+    nums.forEach((n, i) => balls.append(ball(n, i)));
+    li.append(tag, balls);
+    return li;
+  }
+
+  function renderBought() {
+    const list = $('bought-list');
+    list.replaceChildren();
+    state.bought.forEach((g, i) => {
+      const li = gameRow(String(i + 1), g.nums);
+      const del = document.createElement('button');
+      del.type = 'button';
+      del.className = 'lotto-del';
+      del.textContent = '×';
+      del.setAttribute('aria-label', `${i + 1}번째 산 게임 지우기`);
+      del.addEventListener('click', () => {
+        state.bought.splice(i, 1);
+        changed();
+      });
+      li.append(del);
+      list.append(li);
+    });
+    $('bought-opts').hidden = state.bought.length === 0;
+    $('exclude-bought').checked = state.excludeBought;
+  }
+
+  function renderGrid() {
+    const mine = new Set(state.excluded);
+    const bought = state.excludeBought ? boughtNumbers() : new Set();
+    document.querySelectorAll('.lotto-num').forEach((btn) => {
+      const n = Number(btn.dataset.n);
+      const byBought = bought.has(n) && !mine.has(n);
+      btn.setAttribute('aria-pressed', String(mine.has(n)));
+      btn.classList.toggle('is-bought', byBought);
+      btn.setAttribute('aria-label', byBought ? `${n}, 산 게임에 있어 제외됨` : String(n));
+    });
+    $('clear-excluded').hidden = state.excluded.length === 0;
+  }
+
+  function renderSummary() {
+    const total = excludedSet().size;
+    const left = MAX - total;
+    const parts = [];
+    if (state.excludeBought && state.bought.length) parts.push(`산 게임 ${boughtNumbers().size}개`);
+    if (state.excluded.length) parts.push(`직접 뺀 ${state.excluded.length}개`);
+    // The two lists can share numbers, so show the real total, not the sum.
+    let text = parts.length
+      ? `번호 ${total}개 제외(${parts.join(' · ')}) → 남은 ${left}개 번호에서 뽑아요.`
+      : '1~45 전체에서 뽑아요.';
+    if (!state.excludeBought && state.bought.length) text += ` 산 게임 ${state.bought.length}개와 똑같은 조합은 나오지 않아요.`;
+    const summary = $('summary');
+    if (left < 6) {
+      text = `제외한 번호가 너무 많아요. 남은 번호가 ${left}개라 6개를 뽑을 수 없어요. 일부를 풀어 주세요.`;
+    }
+    summary.textContent = text;
+    summary.dataset.tone = left < 6 ? 'warn' : '';
+  }
+
+  function changed() {
+    save();
+    renderBought();
+    renderGrid();
+    renderSummary();
+    if (drawn.length) setStatus('draw-status', '제외 조건이 바뀌었어요. 다시 뽑기를 누르면 바뀐 조건으로 뽑습니다.', 'warn');
+  }
+
+  function addGames(games, gameRound, source) {
+    const have = new Set(state.bought.map((g) => gameKey(g.nums)));
+    let added = 0;
+    for (const nums of games) {
+      const key = gameKey(nums);
+      if (have.has(key)) continue;
+      have.add(key);
+      state.bought.push({ round: gameRound, nums, source });
+      added++;
+    }
+    changed();
+    return { added, dup: games.length - added };
+  }
+
+  // --- 1. games already bought -------------------------------------------
+
+  $('add-typed').addEventListener('click', () => {
+    const input = $('typed');
+    const { games, errors, invalidLines } = parseTypedGames(input.value);
+    if (!games.length && !errors.length) {
+      setStatus('bought-status', '번호를 입력해 주세요. 예: 3 11 19 27 35 42', 'warn');
+      return;
+    }
+    const { added, dup } = addGames(games, round, 'typed');
+    const lines = [];
+    if (added) lines.push(`${added}게임을 추가했어요.`);
+    if (dup) lines.push(`${dup}게임은 이미 목록에 있어요.`);
+    lines.push(...errors);
+    setStatus('bought-status', lines.join('\n'), errors.length ? 'warn' : 'ok');
+    input.value = invalidLines.join('\n');
+  });
+
+  function loadImage(file) {
+    if ('createImageBitmap' in window) return createImageBitmap(file).catch(() => loadImageElement(file));
+    return loadImageElement(file);
+  }
+
+  function loadImageElement(file) {
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        resolve(img);
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error('image'));
+      };
+      img.src = url;
+    });
+  }
+
+  // Ticket QRs are small in a photo, so try the whole photo at two sizes and
+  // then the middle of it. jsQR is loaded only when someone picks a photo.
+  async function readQr(file) {
+    const [{ default: jsQR }, img] = await Promise.all([import('jsqr'), loadImage(file)]);
+    const w = img.width;
+    const h = img.height;
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    const attempts = [
+      [0, 0, w, h, 1200],
+      [0, 0, w, h, 2000],
+      [w * 0.2, h * 0.2, w * 0.6, h * 0.6, 1200],
+    ];
+    let lastSize = '';
+    for (const [sx, sy, sw, sh, maxSide] of attempts) {
+      const scale = Math.min(1, maxSide / Math.max(sw, sh));
+      const cw = Math.max(1, Math.round(sw * scale));
+      const ch = Math.max(1, Math.round(sh * scale));
+      const size = `${sx},${sy},${cw}x${ch}`;
+      if (size === lastSize) continue;
+      lastSize = size;
+      canvas.width = cw;
+      canvas.height = ch;
+      ctx.drawImage(img, sx, sy, sw, sh, 0, 0, cw, ch);
+      const { data } = ctx.getImageData(0, 0, cw, ch);
+      const code = jsQR(data, cw, ch, { inversionAttempts: 'attemptBoth' });
+      if (code && code.data) return code.data;
+      await new Promise((r) => setTimeout(r)); // let the page repaint between tries
+    }
+    return null;
+  }
+
+  $('qr-file').addEventListener('change', async (event) => {
+    const input = event.target;
+    const file = input.files && input.files[0];
+    input.value = ''; // so the same photo can be picked again
+    if (!file) return;
+    setStatus('bought-status', 'QR을 찾는 중이에요…');
+    try {
+      const text = await readQr(file);
+      if (!text) {
+        setStatus(
+          'bought-status',
+          'QR을 찾지 못했어요. QR이 사진 가운데에 크고 선명하게 나오도록 다시 찍거나, 번호를 직접 입력해 주세요.',
+          'warn'
+        );
+        return;
+      }
+      const ticket = parseTicketQr(text);
+      if (!ticket) {
+        setStatus('bought-status', '로또 6/45 용지의 QR이 아니에요.', 'warn');
+        return;
+      }
+      if (ticket.round < round) {
+        setStatus(
+          'bought-status',
+          `제${ticket.round}회 용지예요. 이미 추첨이 끝나서 이번 회차(제${round}회) 추천에는 쓰지 않아요.`,
+          'warn'
+        );
+        return;
+      }
+      const { added, dup } = addGames(ticket.games, ticket.round, 'qr');
+      const extra = dup ? ` (${dup}게임은 이미 목록에 있어요)` : '';
+      setStatus('bought-status', `제${ticket.round}회 용지에서 ${ticket.games.length}게임을 읽었어요.${extra}`, added ? 'ok' : '');
+    } catch {
+      setStatus('bought-status', '사진을 읽지 못했어요. 다른 사진으로 다시 해 보세요.', 'warn');
+    }
+  });
+
+  $('exclude-bought').addEventListener('change', (event) => {
+    state.excludeBought = event.target.checked;
+    changed();
+  });
+
+  $('clear-bought').addEventListener('click', () => {
+    state.bought = [];
+    changed();
+    setStatus('bought-status', '산 게임을 모두 지웠어요.');
+  });
+
+  // --- 2. numbers to leave out -------------------------------------------
+
+  $('grid').addEventListener('click', (event) => {
+    const btn = event.target.closest('.lotto-num');
+    if (!btn) return;
+    const n = Number(btn.dataset.n);
+    state.excluded = state.excluded.includes(n)
+      ? state.excluded.filter((x) => x !== n)
+      : [...state.excluded, n].sort((a, b) => a - b);
+    changed();
+  });
+
+  $('clear-excluded').addEventListener('click', () => {
+    state.excluded = [];
+    changed();
+  });
+
+  // --- 3. draw and share -------------------------------------------------
+
+  $('count').value = String(state.count);
+  $('count').addEventListener('change', (event) => {
+    state.count = Number(event.target.value);
+    save();
+  });
+
+  $('draw').addEventListener('click', () => {
+    const excluded = excludedSet();
+    const result = generateGames({
+      count: state.count,
+      excluded: [...excluded],
+      avoid: state.bought.map((g) => g.nums),
+    });
+    const list = $('result');
+    list.replaceChildren();
+    drawn = result.games || [];
+    $('share').hidden = drawn.length === 0;
+
+    if (result.error) {
+      setStatus('draw-status', result.error, 'warn');
+      return;
+    }
+    if (drawn.length === 0) {
+      setStatus('draw-status', '남은 번호로 만들 수 있는 새 조합이 없어요. 제외한 번호를 일부 풀어 주세요.', 'warn');
+      return;
+    }
+    setStatus(
+      'draw-status',
+      drawn.length < state.count ? `만들 수 있는 조합이 부족해 ${drawn.length}게임만 뽑았어요.` : '',
+      drawn.length < state.count ? 'warn' : ''
+    );
+    drawn.forEach((g, i) => list.append(gameRow(GAME_LABELS[i], g, i)));
+    list.classList.remove('is-new');
+    void list.offsetWidth; // restart the pop-in animation
+    list.classList.add('is-new');
+    $('draw').textContent = '다시 뽑기';
+
+    recordDraw(drawn);
+    message = shareText({ round, games: drawn, excludedCount: excluded.size });
+    $('share-telegram').href =
+      `https://t.me/share/url?url=${encodeURIComponent(pageUrl)}&text=${encodeURIComponent(message)}`;
+  });
+
+  const canShare = typeof navigator.share === 'function';
+  $('share-native').hidden = !canShare;
+  $('share-telegram').hidden = canShare;
+  $('share-hint').textContent = canShare
+    ? '보내기를 누른 뒤 카카오톡(나와의 채팅)이나 텔레그램을 고르세요.'
+    : '카카오톡으로 받으려면 번호를 복사해 나와의 채팅에 붙여넣으세요.';
+
+  async function copyNumbers() {
+    const text = `${message}\n${pageUrl}`;
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      const area = document.createElement('textarea');
+      area.value = text;
+      area.setAttribute('readonly', '');
+      area.style.position = 'fixed';
+      area.style.opacity = '0';
+      document.body.append(area);
+      area.select();
+      document.execCommand('copy');
+      area.remove();
+    }
+    setStatus('draw-status', '번호를 복사했어요. 카카오톡이나 텔레그램 대화창에 붙여넣으세요.', 'ok');
+  }
+
+  $('share-copy').addEventListener('click', copyNumbers);
+  $('share-native').addEventListener('click', async () => {
+    try {
+      await navigator.share({ title: `로또 제${round}회 추천 번호`, text: `${message}\n${pageUrl}` });
+    } catch (err) {
+      if (!err || err.name !== 'AbortError') copyNumbers();
+    }
+  });
+
+  // --- start -------------------------------------------------------------
+
+  const [, month, day] = drawDate(round).split('-').map(Number);
+  $('round-label').textContent = `이번 회차: 제${round}회 · ${month}월 ${day}일(토) 추첨 · 판매는 토요일 오후 8시까지`;
+  changed();
+  renderHistory();
+</script>
+
+<style is:global>
+  .lotto [hidden] {
+    display: none !important;
+  }
+
+  .lotto-round {
+    color: var(--color-muted);
+    font-size: 0.9rem;
+    margin-top: -0.25rem;
+  }
+
+  .lotto-story {
+    margin: 1rem 0;
+    padding: 1rem 1.1rem;
+    border-radius: 10px;
+    background: #f9fafb;
+    font-size: 0.95rem;
+  }
+
+  .lotto-story p {
+    margin: 0 0 0.6rem;
+  }
+
+  .lotto-story .lotto-story-title {
+    font-weight: 700;
+  }
+
+  .lotto-story .lotto-story-sign {
+    margin: 0;
+    color: var(--color-muted);
+    font-size: 0.85rem;
+    text-align: right;
+  }
+
+  .lotto-warning {
+    margin: 1rem 0 1.5rem;
+    padding: 0.85rem 1rem;
+    border: 1px solid #fdba74;
+    border-left: 4px solid #ea580c;
+    border-radius: 8px;
+    background: #fff7ed;
+    color: #7c2d12;
+    font-size: 0.9rem;
+  }
+
+  .lotto-warning strong {
+    display: block;
+    font-size: 1.02rem;
+  }
+
+  .lotto-result-note {
+    margin: 0.75rem 0 0;
+    padding: 0.5rem 0.75rem;
+    border-radius: 6px;
+    background: #fff7ed;
+    color: #9a3412;
+    font-size: 0.88rem;
+    font-weight: 700;
+  }
+
+  .lotto-btn.lotto-btn-telegram {
+    border-color: #1d8fc4;
+    background: #1d8fc4;
+    color: #fff;
+  }
+
+  .lotto-btn.lotto-btn-telegram:hover {
+    background: #187aa8;
+  }
+
+  .lotto-telegram p {
+    margin: 0.25rem 0 0.75rem;
+  }
+
+  .lotto-history {
+    display: grid;
+    gap: 0.5rem;
+    margin: 0.5rem 0 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .lotto-history:empty {
+    display: none;
+  }
+
+  .h-item {
+    padding: 0.6rem 0.75rem;
+    border: 1px solid var(--color-border);
+    border-radius: 10px;
+  }
+
+  .h-item.is-win {
+    border-color: #fdba74;
+    background: #fffbf5;
+  }
+
+  .h-item.is-miss,
+  .h-item.is-pending {
+    color: var(--color-muted);
+  }
+
+  .h-head {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 0.15rem 0.75rem;
+    font-size: 0.9rem;
+  }
+
+  .h-item.is-win .h-head strong {
+    color: #9a3412;
+  }
+
+  .h-meta {
+    color: var(--color-muted);
+    font-size: 0.8rem;
+  }
+
+  .h-line {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin-top: 0.45rem;
+  }
+
+  .h-label {
+    flex: none;
+    width: 4.2rem;
+    color: var(--color-muted);
+    font-size: 0.8rem;
+    font-weight: 600;
+  }
+
+  .h-plus {
+    align-self: center;
+    color: var(--color-muted);
+    font-weight: 700;
+  }
+
+  .lotto-ball.is-miss {
+    background: #fff;
+    color: #9ca3af;
+    box-shadow: inset 0 0 0 1px #d1d5db;
+  }
+
+  .lotto-card {
+    border: 1px solid var(--color-border);
+    border-radius: 12px;
+    padding: 1.25rem;
+    margin: 1.25rem 0;
+  }
+
+  .lotto-card h2 {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 1.1rem;
+    margin: 0 0 0.35rem;
+  }
+
+  .lotto-card h2 small {
+    color: var(--color-muted);
+    font-size: 0.75rem;
+    font-weight: 500;
+  }
+
+  .lotto-step {
+    display: inline-grid;
+    place-items: center;
+    flex: none;
+    width: 1.5rem;
+    height: 1.5rem;
+    border-radius: 50%;
+    background: var(--color-accent);
+    color: #fff;
+    font-size: 0.8rem;
+  }
+
+  .lotto-hint,
+  .lotto-summary {
+    color: var(--color-muted);
+    font-size: 0.85rem;
+    margin: 0.25rem 0 0.5rem;
+  }
+
+  .lotto-summary {
+    color: var(--color-text);
+    font-size: 0.9rem;
+  }
+
+  .lotto-summary[data-tone='warn'] {
+    color: #b91c1c;
+  }
+
+  .lotto-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin: 0.75rem 0;
+  }
+
+  .lotto-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    padding: 0.5rem 1rem;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    background: #fff;
+    color: var(--color-text);
+    font: inherit;
+    font-size: 0.9rem;
+    font-weight: 600;
+    text-decoration: none;
+    cursor: pointer;
+    transition: background-color 0.15s, transform 0.1s;
+  }
+
+  .lotto-btn:hover {
+    background: #f9fafb;
+  }
+
+  .lotto-btn:active,
+  .lotto-num:active {
+    transform: scale(0.97);
+  }
+
+  .lotto-btn-primary {
+    flex: 1;
+    border-color: var(--color-accent);
+    background: var(--color-accent);
+    color: #fff;
+  }
+
+  .lotto-btn-primary:hover {
+    background: #ea6200;
+  }
+
+  .lotto-btn:focus-visible,
+  .lotto-num:focus-visible,
+  .lotto-link:focus-visible,
+  .lotto-del:focus-visible,
+  .qr-input:focus-visible + .lotto-btn {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+
+  .lotto-label {
+    display: block;
+    margin: 1rem 0 0.35rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+  }
+
+  .lotto textarea,
+  .lotto select {
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    background: #fff;
+    color: var(--color-text);
+    font: inherit;
+    font-size: 1rem; /* 16px keeps iOS from zooming in on focus */
+  }
+
+  .lotto textarea {
+    display: block;
+    width: 100%;
+    padding: 0.6rem 0.75rem;
+    resize: vertical;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .lotto select {
+    min-height: 44px;
+    padding: 0 0.75rem;
+  }
+
+  .lotto-status {
+    margin: 0.5rem 0 0;
+    font-size: 0.88rem;
+    white-space: pre-line;
+  }
+
+  .lotto-status:empty {
+    display: none;
+  }
+
+  .lotto-status[data-tone='ok'] {
+    color: #047857;
+  }
+
+  .lotto-status[data-tone='warn'] {
+    color: #b91c1c;
+  }
+
+  .lotto-games {
+    display: grid;
+    gap: 0.5rem;
+    margin: 0.75rem 0 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .lotto-games:empty {
+    display: none;
+  }
+
+  .lotto-game {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.5rem 0.6rem;
+    border-radius: 10px;
+    background: #f9fafb;
+  }
+
+  .lotto-tag {
+    flex: none;
+    min-width: 1.4rem;
+    color: var(--color-muted);
+    font-size: 0.85rem;
+    font-weight: 700;
+    text-align: center;
+  }
+
+  .lotto-balls {
+    display: flex;
+    flex: 1;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+  }
+
+  .lotto-ball {
+    display: inline-grid;
+    place-items: center;
+    width: 2rem;
+    height: 2rem;
+    border-radius: 50%;
+    color: #fff;
+    font-size: 0.88rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    box-shadow: inset 0 -2px 0 rgb(0 0 0 / 0.12);
+  }
+
+  .lotto-result .lotto-ball {
+    width: 2.35rem;
+    height: 2.35rem;
+    font-size: 1rem;
+  }
+
+  /* Usual lotto ball colours, darkened (or with dark text) to stay readable. */
+  .tone-0 { background: #fbc400; color: #3d2e00; }
+  .tone-1 { background: #1877b8; }
+  .tone-2 { background: #d43d3d; }
+  .tone-3 { background: #6b7280; }
+  .tone-4 { background: #8bc34a; color: #1f3a00; }
+
+  .lotto-result.is-new .lotto-ball {
+    animation: lotto-pop 0.32s cubic-bezier(0.2, 0.9, 0.3, 1.25) both;
+    animation-delay: calc(var(--row) * 80ms + var(--i) * 40ms);
+  }
+
+  @keyframes lotto-pop {
+    from {
+      opacity: 0;
+      transform: scale(0.4);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .lotto-result.is-new .lotto-ball {
+      animation: none;
+    }
+  }
+
+  .lotto-del {
+    flex: none;
+    width: 2rem;
+    height: 2rem;
+    border: none;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--color-muted);
+    font-size: 1.25rem;
+    line-height: 1;
+    cursor: pointer;
+  }
+
+  .lotto-del:hover {
+    background: #e5e7eb;
+    color: var(--color-text);
+  }
+
+  .lotto-bought-opts {
+    margin-top: 0.75rem;
+  }
+
+  .lotto-check {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.92rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .lotto-check input {
+    width: 1.15rem;
+    height: 1.15rem;
+    accent-color: var(--color-accent);
+  }
+
+  .lotto-link {
+    padding: 0.25rem 0;
+    border: none;
+    background: none;
+    color: var(--color-muted);
+    font: inherit;
+    font-size: 0.85rem;
+    text-decoration: underline;
+    cursor: pointer;
+  }
+
+  .lotto-grid {
+    display: grid;
+    grid-template-columns: repeat(9, 44px);
+    gap: 0.4rem;
+    margin: 0.5rem 0;
+  }
+
+  .lotto-num {
+    width: 100%;
+    aspect-ratio: 1;
+    border: 1px solid #d1d5db;
+    border-radius: 50%;
+    background: #fff;
+    color: var(--color-text);
+    font: inherit;
+    font-size: 0.9rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    cursor: pointer;
+    transition: background-color 0.15s, color 0.15s, transform 0.1s;
+  }
+
+  .lotto-num[aria-pressed='true'] {
+    border-color: #1f2937;
+    background: #1f2937;
+    color: #fff;
+    text-decoration: line-through;
+  }
+
+  .lotto-num.is-bought {
+    border-color: #e5e7eb;
+    background: #f3f4f6;
+    color: #9ca3af;
+    text-decoration: line-through;
+  }
+
+  .lotto-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 1rem;
+    margin: 0.25rem 0 0;
+    color: var(--color-muted);
+    font-size: 0.8rem;
+  }
+
+  .lotto-legend .key {
+    display: inline-block;
+    width: 0.75rem;
+    height: 0.75rem;
+    margin-right: 0.3rem;
+    border-radius: 50%;
+    vertical-align: -0.05rem;
+  }
+
+  .key-mine {
+    background: #1f2937;
+  }
+
+  .key-bought {
+    border: 1px solid #d1d5db;
+    background: #f3f4f6;
+  }
+
+  .lotto-share .lotto-actions {
+    margin-bottom: 0.25rem;
+  }
+
+  .lotto-notice ul {
+    margin: 0;
+    padding-left: 1.1rem;
+  }
+
+  .lotto-notice li + li {
+    margin-top: 0.25rem;
+  }
+
+  @media (max-width: 520px) {
+    .lotto-card {
+      padding: 1rem;
+    }
+
+    .lotto-grid {
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+    }
+
+    .lotto-game {
+      gap: 0.45rem;
+      padding: 0.45rem 0.5rem;
+    }
+
+    .lotto-balls {
+      gap: 0.25rem;
+    }
+
+    .lotto-ball {
+      width: 1.75rem;
+      height: 1.75rem;
+      font-size: 0.8rem;
+    }
+
+    .lotto-result .lotto-ball {
+      width: 2.15rem;
+      height: 2.15rem;
+      font-size: 0.95rem;
+    }
+
+    .lotto-share .lotto-btn {
+      flex: 1 1 100%;
+    }
+
+    .h-line {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 0.3rem;
+    }
+  }
+</style>

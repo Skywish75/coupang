@@ -22,6 +22,8 @@ npm run dev
 
 ## 매일 자동 실행 (00:00 UTC = 오전 9시)
 
+cron은 `wrangler.toml`에 하나만 있고(무료 플랜 계정당 5개 제한), 실행 시각에 따라 `worker/lib/schedule.js`가 할 일을 고릅니다: 매일 09시 자동 발행, 토요일 10~12시 텔레그램 로또 발송, 토 22시·일 0시/10시 당첨번호 수집.
+
 Worker의 cron이 한 번 실행될 때 다음을 하나의 커밋으로 GitHub에 올립니다.
 
 1. 모든 키워드를 쿠팡 검색 API로 1회씩 조회해 가격 기록·비교 데이터 갱신 (검색 API 호출 제한 때문에 최대 8개 키워드)
@@ -39,6 +41,20 @@ Gemini가 실패해도 가격 데이터는 저장됩니다. 테스트는 `npm te
 - **광고 코드**: `<head>` 코드, 상단 배너, 본문 아래 배너, `ads.txt`를 편집. 저장하면 `data/ads.json`이 커밋되고 자동 빌드로 2~3분 뒤 반영됩니다. 쿠팡 배너에는 파트너스 고지 문구가 자동으로 붙습니다.
 
 D1 테이블을 바꿀 때는 `migrations/`에 SQL을 추가하고 `npx wrangler d1 migrations apply coupang-stats --remote`를 직접 실행하세요 (자동 배포로는 적용되지 않습니다).
+
+## 로또 번호 추천 페이지 (`/lotto`)
+
+- 이미 산 게임(용지 QR 사진 또는 직접 입력)과 빼고 싶은 번호를 제외하고 무작위로 1~5게임을 뽑습니다. 모든 계산은 방문자 브라우저에서 하므로 Worker 요청이 생기지 않습니다.
+- 용지 QR은 `jsqr`로 기기 안에서 읽습니다(QR 형식: `?v=<회차>` 뒤에 게임마다 문자 1개 + 숫자 12자리). 로직은 `src/lib/lotto.js`, 테스트는 `worker/lib/lotto.test.js`.
+- **당첨 확인 기록**: 회차마다 마지막으로 뽑은 번호를 브라우저에 저장하고, `data/lottoResults.json`의 당첨번호와 맞춰 등수를 보여 줍니다.
+- **당첨번호 수집**: 토요일 22시, 일요일 0시·10시에 [smok95/lotto](https://github.com/smok95/lotto) 공개 JSON에서 가져와 커밋합니다(동행복권 자체 API는 개편으로 없어졌고 해외 IP를 막습니다). 관리자 페이지에서 바로 가져올 수도 있습니다.
+- **텔레그램 주간 발송**: 매주 토요일 10~12시에 구독자에게 추천 번호 5게임과 지난주 결과를 보냅니다(무료 플랜 제한으로 매시 최대 40명). 봇에게 산 번호를 보내면 그 번호를 빼고 다시 뽑아 줍니다. 구독자는 D1 `lotto_subscribers` 테이블(Worker가 처음 쓸 때 자동 생성).
+
+텔레그램 봇 설정 (한 번만):
+1. 텔레그램 @BotFather 에게 `/newbot` → 봇 이름·아이디 정하고 토큰 받기
+2. Cloudflare 대시보드 → Workers & Pages → coupang → 설정 → Variables and Secrets → Secret `TELEGRAM_BOT_TOKEN` 추가 (또는 `npx wrangler secret put TELEGRAM_BOT_TOKEN`)
+3. `/admin` → "로또 번호 · 텔레그램" → **텔레그램 봇 연결**. 웹훅·명령어 메뉴가 설정되고 `data/telegram.json`에 봇 아이디가 커밋되어 `/lotto` 페이지에 구독 버튼이 생깁니다.
+4. 도메인을 7mall.kr로 옮긴 뒤에는 새 주소의 `/admin`에서 **텔레그램 봇 연결**을 한 번 더 누르세요(웹훅 주소 갱신).
 
 ## 직접 글 추가하기
 
