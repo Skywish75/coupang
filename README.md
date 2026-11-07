@@ -94,7 +94,7 @@ wrangler deploy
 ## 법적 고지 체크리스트
 
 - [ ] 모든 제휴 링크가 포함된 글에 `hasAffiliateLinks: true` 설정 (기본값 true)
-- [x] `/privacy` 페이지 내용을 실제 운영 방식에 맞게 구체화 (개인정보 보호책임자 연락처는 운영자가 추가)
+- [x] `/privacy` 페이지 내용을 실제 운영 방식에 맞게 구체화 (개인정보 보호책임자 연락처 포함)
 - [ ] `data/affiliateLinks.json`의 placeholder URL을 실제 쿠팡파트너스 링크로 교체
 
 ## 자동 발행 시스템 (관리자)
