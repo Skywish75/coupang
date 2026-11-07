@@ -1,6 +1,6 @@
-# 7mall.kr
+# 가격일기
 
-쿠팡파트너스 제휴 링크 기반 상품 정리·가격 비교 사이트. Astro(정적 사이트) + Cloudflare Workers(Static Assets).
+쿠팡 인기 상품 가격을 매일 기록해 30일 최저가와 비교하는 사이트(쿠팡 파트너스 제휴)와 로또 번호 생성기. 주소: https://coupang.tclee.workers.dev Astro(정적 사이트) + Cloudflare Workers(Static Assets).
 
 ## 로컬 개발
 
@@ -55,7 +55,7 @@ D1 테이블을 바꿀 때는 `migrations/`에 SQL을 추가하고 `npx wrangler
 1. 텔레그램 @BotFather 에게 `/newbot` → 봇 이름·아이디 정하고 토큰 받기
 2. Cloudflare 대시보드 → Workers & Pages → coupang → 설정 → Variables and Secrets → Secret `TELEGRAM_BOT_TOKEN` 추가 (또는 `npx wrangler secret put TELEGRAM_BOT_TOKEN`)
 3. `/admin` → "로또 번호 · 텔레그램" → **텔레그램 봇 연결**. 웹훅·명령어 메뉴가 설정되고 `data/telegram.json`에 봇 아이디가 커밋되어 `/lotto` 페이지에 구독 버튼이 생깁니다.
-4. 도메인을 7mall.kr로 옮긴 뒤에는 새 주소의 `/admin`에서 **텔레그램 봇 연결**을 한 번 더 누르세요(웹훅 주소 갱신).
+4. 사이트 주소가 바뀌면 새 주소의 `/admin`에서 **텔레그램 봇 연결**을 한 번 더 누르세요(웹훅 주소 갱신).
 
 ## 검색엔진(SEO)
 
@@ -87,13 +87,9 @@ npm run build
 wrangler deploy
 ```
 
-## 도메인(7mall.kr) 연결
+## 사이트 주소
 
-1. Cloudflare 대시보드에 7mall.kr 도메인 추가
-2. 도메인 등록기관(가비아 등)에서 네임서버를 Cloudflare가 안내하는 값으로 변경
-3. Worker 프로젝트(coupang) 설정 → 도메인 → Custom domains에서 7mall.kr 추가
-4. `astro.config.mjs`의 `SITE`를 `https://7mall.kr`로 변경 후 재배포 (canonical·og·사이트맵·robots.txt·RSS가 이 값을 따른다)
-5. workers.dev → 7mall.kr 301 리다이렉트를 Worker에 추가하고(`/telegram/webhook` 제외), 구글 서치 콘솔·네이버·다음·빙에 새 주소로 등록
+당분간 `https://coupang.tclee.workers.dev`를 씁니다. 나중에 주소를 바꾸면 `astro.config.mjs`의 `SITE`를 바꾸고(canonical·og·사이트맵·robots.txt·RSS가 이 값을 따름), 옛 주소에서 301 리다이렉트를 걸고, 검색엔진 등록과 텔레그램 봇 연결을 새 주소로 다시 하세요.
 
 ## 법적 고지 체크리스트
 
@@ -109,7 +105,7 @@ wrangler deploy
 Cloudflare Workers Build를 자동 트리거해서 몇 분 내 사이트에 반영됩니다. 사람이 매 건
 검수하지 않고 그대로 발행되므로, 초기에는 로그를 자주 확인하고 필요시 키워드를 조정하세요.
 
-관리자 화면: `https://coupang.tclee.workers.dev/admin` (도메인 연결 후에는 `https://7mall.kr/admin`)
+관리자 화면: `https://coupang.tclee.workers.dev/admin`
 - 최근 실행 로그 확인
 - 키워드 목록 편집 (한 줄에 하나씩, 순서대로 순환)
 - "지금 1건 자동 발행" 버튼으로 cron을 기다리지 않고 즉시 실행

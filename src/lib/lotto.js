@@ -148,7 +148,7 @@ const pad = (n) => String(n).padStart(2, '0');
 
 /** Plain-text message for KakaoTalk / Telegram / clipboard. */
 export function shareText({ round, games, excludedCount = 0 }) {
-  const lines = [`[7mall.kr] 로또 6/45 제${round}회 추천 번호`];
+  const lines = [`[가격일기] 로또 6/45 제${round}회 추천 번호`];
   games.forEach((g, i) => lines.push(`${GAME_LABELS[i]}  ${g.map(pad).join(' ')}`));
   if (excludedCount) lines.push(`(번호 ${excludedCount}개 제외하고 뽑음)`);
   lines.push('무작위 추천이며 당첨을 보장하지 않습니다.');

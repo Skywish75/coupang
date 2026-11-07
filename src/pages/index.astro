@@ -4,7 +4,7 @@ import { getCollection } from 'astro:content';
 import { getComparisons } from '../lib/compare';
 import { getPriceStats, formatWon, formatDate } from '../lib/prices';
 import { shortProductName } from '../lib/names.js';
-import { org } from '../lib/seo';
+import { org, SITE_NAME } from '../lib/seo';
 import { postTitle, postUrl } from '../lib/posts';
 
 const posts = (await getCollection('blog'))
@@ -26,7 +26,7 @@ const drops = comparisons
 const site = Astro.site!;
 const jsonLd = {
   '@context': 'https://schema.org',
-  '@graph': [{ '@type': 'WebSite', url: site.href, name: '7mall.kr', inLanguage: 'ko-KR' }, org(site)],
+  '@graph': [{ '@type': 'WebSite', url: site.href, name: SITE_NAME, inLanguage: 'ko-KR' }, org(site)],
 };
 ---
 <BaseLayout

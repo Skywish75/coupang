@@ -120,7 +120,7 @@ test('shareText lists games with zero-padded numbers', () => {
   assert.equal(
     text,
     [
-      '[7mall.kr] 로또 6/45 제1249회 추천 번호',
+      '[가격일기] 로또 6/45 제1249회 추천 번호',
       'A  03 11 19 27 35 42',
       'B  01 02 03 04 05 06',
       '(번호 14개 제외하고 뽑음)',

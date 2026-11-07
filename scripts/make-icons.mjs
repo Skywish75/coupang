@@ -3,6 +3,7 @@
 // (sharp is installed with Astro, so there is nothing extra to install).
 import sharp from 'sharp';
 import { mkdir } from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
 
 const OUT = new URL('../public/icons/', import.meta.url);
 const FONT = "'Helvetica Neue', Helvetica, Arial, sans-serif";
@@ -46,7 +47,7 @@ function ogImage() {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
     <rect width="1200" height="630" fill="#f7f8fa"/>
     <rect x="0" y="0" width="1200" height="12" fill="#e4312b"/>
-    <text x="96" y="250" font-family="${FONT}" font-weight="800" font-size="104" fill="#14325a">7mall.kr</text>
+    <text x="96" y="250" font-family="${FONT}" font-weight="800" font-size="104" fill="#14325a">가격일기</text>
     <text x="96" y="345" font-family="${FONT}" font-weight="600" font-size="46" fill="#374151">쿠팡 인기 상품 가격 기록 · 비교</text>
     <text x="96" y="420" font-family="${FONT}" font-weight="500" font-size="34" fill="#6b7280">매일 기록한 가격으로 30일 최저가를 확인하세요</text>
     <g transform="translate(800 170)">
@@ -74,10 +75,8 @@ function lottoOgImage() {
 
 // Site logo (same design as public/favicon.svg), used as the Organization logo.
 function logo() {
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 100 100">
-    <rect width="100" height="100" rx="20" fill="#ff6f0f"/>
-    <text x="50" y="68" font-size="56" font-weight="700" text-anchor="middle" fill="#fff" font-family="${FONT}">7</text>
-  </svg>`;
+  return readFileSync(new URL('../public/favicon.svg', import.meta.url), 'utf8')
+    .replace('viewBox=', 'width="512" height="512" viewBox=');
 }
 
 const jobs = [

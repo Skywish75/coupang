@@ -55,9 +55,16 @@ h1, h2, h3 {
 }
 
 .logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
   font-weight: 700;
   text-decoration: none;
   color: var(--color-text);
+}
+
+.logo img {
+  display: block;
 }
 
 .nav a {

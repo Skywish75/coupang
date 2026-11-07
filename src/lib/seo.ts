@@ -1,5 +1,5 @@
 // Shared bits for <head> metadata and schema.org JSON-LD.
-export const SITE_NAME = '7mall.kr';
+export const SITE_NAME = '가격일기';
 
 export function org(site: URL) {
   return {

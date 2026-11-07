@@ -54,7 +54,9 @@ export async function callTelegram(env, method, body = {}) {
   return data.result;
 }
 
-/** Webhook secret derived from the bot token, so no second secret is needed. */
+/** Webhook secret derived from the bot token, so no second secret is needed.
+ * Keep the "7mall-" prefix (the old site name): changing it changes the secret,
+ * and the bot would reject every update until "봇 연결" is pressed again. */
 export async function webhookSecret(env) {
   const bytes = await crypto.subtle.digest(
     'SHA-256',
@@ -171,7 +173,7 @@ export async function handleUpdate(env, update, nowMs = Date.now()) {
     )
       .bind(chatId, new Date(nowMs).toISOString())
       .run();
-    await reply(`7mall 로또 번호 알림을 켰어요.\n\n${HELP}`);
+    await reply(`가격일기 로또 번호 알림을 켰어요.\n\n${HELP}`);
     await reply(numbersText(round, generateGames({ count: MAX_GAMES }).games));
     return;
   }

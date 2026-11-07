@@ -5,8 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { slugify } from './worker/lib/slug.js';
 
-// 도메인(7mall.kr) 연결 전까지는 workers.dev 주소를 사용한다. 연결 후 'https://7mall.kr'로 변경.
-// canonical·og·sitemap·robots.txt·RSS가 모두 이 값을 따른다.
+// 사이트 주소. canonical·og·sitemap·robots.txt·RSS가 모두 이 값을 따른다.
 const SITE = 'https://coupang.tclee.workers.dev';
 
 const read = (p) => JSON.parse(fs.readFileSync(new URL(p, import.meta.url), 'utf8'));

@@ -184,7 +184,7 @@ async function renderPage(env, notice) {
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <meta name="robots" content="noindex" />
-<title>7mall 자동발행 관리자</title>
+<title>가격일기 자동발행 관리자</title>
 <style>
   body { font-family: -apple-system, sans-serif; max-width: 860px; margin: 2rem auto; padding: 0 1rem; color: #1a1a1a; }
   nav a { margin-right: 1rem; color: #ff6f0f; }
@@ -210,7 +210,7 @@ async function renderPage(env, notice) {
 </style>
 </head>
 <body>
-  <h1>7mall 자동발행 관리자</h1>
+  <h1>가격일기 자동발행 관리자</h1>
   <nav><a href="#stats">통계</a><a href="#run">지금 실행</a><a href="#topics">키워드</a><a href="#ads">광고</a><a href="#lotto">로또·텔레그램</a><a href="#logs">로그</a></nav>
   ${notice ? `<p class="notice">${escapeHtml(notice)}</p>` : ''}
 
