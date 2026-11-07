@@ -13,8 +13,29 @@ const botUsername = telegram.botUsername;
   title="로또 번호 추천기 - 산 번호 빼고 랜덤 생성"
   description="로또 6/45 번호를 무작위로 추천합니다. 이미 산 게임은 용지 QR을 찍거나 직접 입력해 빼고, 원하지 않는 번호도 제외할 수 있어요."
 >
+  <Fragment slot="head">
+    {/* Lets phones add this page to the home screen as an app-like shortcut. */}
+    <link rel="manifest" href="/lotto.webmanifest" />
+    <link rel="apple-touch-icon" href="/icons/lotto-apple-180.png" />
+    <meta name="apple-mobile-web-app-title" content="로또 번호" />
+    <script is:inline>
+      // Chrome may offer the install prompt before the page script runs; keep it for the button.
+      window.addEventListener('beforeinstallprompt', function (e) {
+        e.preventDefault();
+        window.__lottoInstall = e;
+        document.dispatchEvent(new Event('lotto:installable'));
+      });
+    </script>
+  </Fragment>
   <div class="lotto">
     <h1>로또 번호 추천기</h1>
+    <div class="lotto-install" id="install" hidden>
+      <div class="lotto-install-row">
+        <button type="button" class="lotto-install-btn" id="install-btn">📲 휴대폰 홈 화면에 바로가기 추가</button>
+        <button type="button" class="lotto-install-close" id="install-close" aria-label="바로가기 안내 닫기">✕</button>
+      </div>
+      <p class="lotto-install-help" id="install-help" hidden></p>
+    </div>
     <div class="lotto-story">
       <p class="lotto-story-title">이 페이지를 만든 이유</p>
       <p>
@@ -613,6 +634,74 @@ const botUsername = telegram.botUsername;
 
   $('share-copy').addEventListener('click', copyNumbers);
 
+  // --- home screen shortcut ---------------------------------------------
+  // Android Chrome/Samsung Internet: the button opens the browser's install
+  // prompt. iPhone has no prompt, so it shows the Share → 홈 화면에 추가 steps.
+  // In-app browsers (KakaoTalk, Naver …) can't add shortcuts, so they're sent
+  // to the phone's normal browser first.
+
+  const INSTALL_KEY = 'lotto:install-dismissed';
+  const ua = navigator.userAgent;
+  const isIOS = /iPhone|iPad|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const isAndroid = /Android/.test(ua);
+  const inKakao = /KAKAOTALK/i.test(ua);
+  const inApp = inKakao || /NAVER\(inapp|DaumApps|Instagram|FBAN|FBAV|Line\/|Telegram|everytimeApp|BAND\//i.test(ua);
+  const installed = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+
+  function installDismissed() {
+    try {
+      return localStorage.getItem(INSTALL_KEY) === '1';
+    } catch {
+      return false;
+    }
+  }
+
+  function hideInstall() {
+    $('install').hidden = true;
+    try {
+      localStorage.setItem(INSTALL_KEY, '1');
+    } catch {
+      // Private mode: the bar just comes back next visit.
+    }
+  }
+
+  function showInstallHelp(text) {
+    $('install-help').textContent = text;
+    $('install-help').hidden = false;
+  }
+
+  function offerInstall() {
+    if (!installed && !installDismissed() && (isIOS || isAndroid)) $('install').hidden = false;
+  }
+
+  offerInstall();
+  document.addEventListener('lotto:installable', offerInstall);
+  window.addEventListener('appinstalled', hideInstall);
+  $('install-close').addEventListener('click', hideInstall);
+
+  $('install-btn').addEventListener('click', async () => {
+    const prompt = window.__lottoInstall;
+    if (prompt) {
+      window.__lottoInstall = null; // a prompt can only be shown once
+      prompt.prompt();
+      const choice = await prompt.userChoice.catch(() => null);
+      if (choice?.outcome === 'accepted') hideInstall();
+      return;
+    }
+    if (inKakao) {
+      // Opens this page in the phone's default browser, where it can be added.
+      location.href = `kakaotalk://web/openExternal?url=${encodeURIComponent(pageUrl)}`;
+      return;
+    }
+    if (inApp) {
+      showInstallHelp('이 앱 안의 화면에서는 바로가기를 만들 수 없어요. 메뉴(⋮ 또는 ···)에서 "다른 브라우저로 열기"를 누른 뒤 다시 눌러 주세요.');
+    } else if (isIOS) {
+      showInstallHelp('화면의 공유 버튼(⬆️)을 누르고 "홈 화면에 추가"를 고르세요. 공유 버튼이 안 보이면 "···" 메뉴 안에 있어요.');
+    } else {
+      showInstallHelp('브라우저 메뉴(⋮ 또는 ≡)를 열고 "홈 화면에 추가" 또는 "앱 설치"를 고르세요.');
+    }
+  });
+
   // --- start -------------------------------------------------------------
 
   const [, month, day] = drawDate(round).split('-').map(Number);
@@ -630,6 +719,51 @@ const botUsername = telegram.botUsername;
     color: var(--color-muted);
     font-size: 0.9rem;
     margin-top: -0.25rem;
+  }
+
+  .lotto-install {
+    margin: 0.75rem 0 0;
+  }
+
+  .lotto-install-row {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  .lotto-install-btn {
+    flex: 1;
+    min-height: 44px;
+    padding: 0.55rem 0.9rem;
+    border: 1px solid #c7d7ea;
+    border-radius: 10px;
+    background: #eef4fb;
+    color: #14325a;
+    font: inherit;
+    font-size: 0.95rem;
+    font-weight: 700;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .lotto-install-close {
+    flex: none;
+    width: 44px;
+    height: 44px;
+    border: 0;
+    border-radius: 10px;
+    background: transparent;
+    color: var(--color-muted);
+    font-size: 1rem;
+    cursor: pointer;
+  }
+
+  .lotto-install-help {
+    margin: 0.5rem 0 0;
+    padding: 0.6rem 0.8rem;
+    border-radius: 8px;
+    background: #f9fafb;
+    font-size: 0.9rem;
   }
 
   .lotto-story {
