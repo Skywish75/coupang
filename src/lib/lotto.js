@@ -201,3 +201,25 @@ export function reviewHistory(history, results) {
     };
   });
 }
+
+// Telegram /start payloads may hold up to 64 characters of [A-Za-z0-9_-], so a
+// draw is packed as "p<round>_" plus one character per number (1-45 -> '1'..'j').
+const PAYLOAD_DIGITS = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghij';
+
+/** "p1249_" + 6 characters per game; at most 36 characters for 5 games. */
+export function encodeStartPayload(round, games) {
+  return `p${round}_${games.map((g) => g.map((n) => PAYLOAD_DIGITS[n]).join('')).join('')}`;
+}
+
+/** Inverse of encodeStartPayload, or null for anything that isn't a valid draw. */
+export function decodeStartPayload(payload) {
+  const m = /^p(\d{1,5})_([1-9A-Za-j]+)$/.exec(String(payload ?? ''));
+  if (!m || m[2].length % PICK !== 0 || m[2].length > PICK * MAX_GAMES) return null;
+  const games = [];
+  for (let i = 0; i < m[2].length; i += PICK) {
+    const nums = [...m[2].slice(i, i + PICK)].map((c) => PAYLOAD_DIGITS.indexOf(c));
+    if (gameError(nums)) return null;
+    games.push(sortNums(nums));
+  }
+  return { round: Number(m[1]), games };
+}

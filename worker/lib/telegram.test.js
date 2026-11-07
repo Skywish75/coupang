@@ -16,7 +16,7 @@ function fakeDb(rows = []) {
     bind: (...a) => stmt(sql, a),
     run: async () => log.push({ sql, args }),
     all: async () => ({ results: /SELECT chat_id/.test(sql) ? rows : [] }),
-    first: async () => ({ n: 0, total: rows.length, sent: 0 }),
+    first: async () => (/SELECT 1 AS ok/.test(sql) ? null : { n: 0, total: rows.length, sent: 0 }),
   });
   return {
     log,
@@ -79,6 +79,20 @@ test('/start subscribes and sends help plus numbers with the disclaimer', async 
   assert.match(sent[1].text, /제1249회 추천 번호/);
   assert.match(sent[1].text, /당첨을 약속하지 않습니다/);
   assert.equal(sent[1].text.split('\n').filter((l) => /^[A-E] {2}\d\d( \d\d){5}$/.test(l)).length, 5);
+});
+
+test('/start with a page payload sends those numbers back without subscribing', async () => {
+  const { encodeStartPayload } = await import('../../src/lib/lotto.js');
+  const e = env();
+  const games = [[3, 11, 19, 27, 35, 42], [1, 2, 3, 4, 5, 45]];
+  await handleUpdate(e, message(`/start ${encodeStartPayload(1249, games)}`), kst('2026-11-07T18:00:00'));
+  assert.ok(!e.DB.log.some((s) => /INSERT INTO lotto_subscribers/.test(s.sql)));
+  assert.equal(sent.length, 1);
+  assert.match(sent[0].text, /제1249회 추천 번호/);
+  assert.match(sent[0].text, /A {2}03 11 19 27 35 42\nB {2}01 02 03 04 05 45/);
+  assert.match(sent[0].text, /로또 페이지에서 뽑은 번호/);
+  assert.match(sent[0].text, /당첨을 약속하지 않습니다/);
+  assert.match(sent[0].text, /\/start 를 보내 주세요/);
 });
 
 test('/stop deletes the subscriber; group chats are ignored', async () => {

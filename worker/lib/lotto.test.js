@@ -155,3 +155,16 @@ test('checkGame ranks every prize tier', async () => {
   assert.equal(reviewed[1].wins[0].rank, 5);
   assert.equal(reviewed[1].best, 3);
 });
+
+test('start payload round-trips a draw and rejects junk', async () => {
+  const { encodeStartPayload, decodeStartPayload } = await import('../../src/lib/lotto.js');
+  const games = [[1, 9, 10, 36, 44, 45], [3, 11, 19, 27, 35, 42], [2, 4, 6, 8, 10, 12], [5, 15, 25, 30, 40, 41], [7, 13, 17, 23, 29, 31]];
+  const payload = encodeStartPayload(1249, games);
+  assert.match(payload, /^[A-Za-z0-9_-]{1,64}$/);
+  assert.equal(payload.length, 36);
+  assert.deepEqual(decodeStartPayload(payload), { round: 1249, games });
+  assert.equal(decodeStartPayload('lotto'), null);
+  assert.equal(decodeStartPayload('p1249_12345'), null); // not a whole game
+  assert.equal(decodeStartPayload('p1249_112345'), null); // duplicate number
+  assert.equal(decodeStartPayload('p1249_' + '123456'.repeat(6)), null); // more than 5 games
+});

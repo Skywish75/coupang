@@ -6,6 +6,7 @@ import {
   generateGames,
   parseTypedGames,
   checkGame,
+  decodeStartPayload,
   pad,
 } from '../../src/lib/lotto.js';
 import { getJsonFile, commitFiles } from './github.js';
@@ -154,6 +155,17 @@ export async function handleUpdate(env, update, nowMs = Date.now()) {
 
   if (command === 'start') {
     await ensureTable(env);
+    // "텔레그램으로 받기" on /lotto opens the bot with the drawn numbers packed
+    // into the start payload: send those back without subscribing anyone.
+    const drawn = decodeStartPayload(text.split(/\s+/)[1]);
+    if (drawn) {
+      const subscribed = await env.DB.prepare('SELECT 1 AS ok FROM lotto_subscribers WHERE chat_id = ?1')
+        .bind(chatId)
+        .first();
+      const hint = subscribed ? '' : '\n\n매주 토요일 추천 번호도 받으려면 /start 를 보내 주세요.';
+      await reply(numbersText(drawn.round, drawn.games, '(로또 페이지에서 뽑은 번호예요)') + hint);
+      return;
+    }
     await env.DB.prepare(
       'INSERT INTO lotto_subscribers (chat_id, subscribed_at) VALUES (?1, ?2) ON CONFLICT (chat_id) DO NOTHING'
     )

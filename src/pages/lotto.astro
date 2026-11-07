@@ -92,14 +92,17 @@ const botUsername = telegram.botUsername;
       <p class="lotto-status" id="draw-status" role="status" aria-live="polite"></p>
       <ol class="lotto-games lotto-result" id="result" aria-label="추천 번호"></ol>
 
-      <div class="lotto-share" id="share" hidden>
+      <div class="lotto-share" id="share" data-bot={botUsername} hidden>
         <p class="lotto-result-note">⚠️ 무작위 조합이며 당첨을 약속하지 않습니다.</p>
         <div class="lotto-actions">
-          <button type="button" class="lotto-btn" id="share-native" hidden>카카오톡 · 텔레그램으로 보내기</button>
-          <a class="lotto-btn" id="share-telegram" href="https://t.me/share/url" target="_blank" rel="noopener">텔레그램으로 보내기</a>
+          <a class="lotto-btn lotto-btn-telegram" id="share-telegram" href={botUsername ? `https://t.me/${botUsername}` : 'https://t.me/share/url'} target="_blank" rel="noopener">텔레그램으로 받기</a>
           <button type="button" class="lotto-btn" id="share-copy">번호 복사</button>
         </div>
-        <p class="lotto-hint" id="share-hint"></p>
+        <p class="lotto-hint">
+          {botUsername
+            ? '텔레그램이 열리면 아래 시작(START) 버튼을 누르세요. 봇이 이 번호를 바로 보내 드려요.'
+            : '텔레그램에서 받을 대화방을 고르세요. 나에게 보내려면 "저장한 메시지(Saved Messages)"를 고르면 돼요.'}
+        </p>
       </div>
     </section>
 
@@ -142,6 +145,7 @@ const botUsername = telegram.botUsername;
     parseTypedGames,
     generateGames,
     shareText,
+    encodeStartPayload,
     gameKey,
     reviewHistory,
   } from '../lib/lotto.js';
@@ -580,16 +584,14 @@ const botUsername = telegram.botUsername;
 
     recordDraw(drawn);
     message = shareText({ round, games: drawn, excludedCount: excluded.size });
-    $('share-telegram').href =
-      `https://t.me/share/url?url=${encodeURIComponent(pageUrl)}&text=${encodeURIComponent(message)}`;
+    // With the bot connected, the numbers ride along in the /start link and
+    // the bot sends them straight back; otherwise use Telegram's share page.
+    $('share-telegram').href = bot
+      ? `https://t.me/${bot}?start=${encodeStartPayload(round, drawn)}`
+      : `https://t.me/share/url?url=${encodeURIComponent(pageUrl)}&text=${encodeURIComponent(message)}`;
   });
 
-  const canShare = typeof navigator.share === 'function';
-  $('share-native').hidden = !canShare;
-  $('share-telegram').hidden = canShare;
-  $('share-hint').textContent = canShare
-    ? '보내기를 누른 뒤 카카오톡(나와의 채팅)이나 텔레그램을 고르세요.'
-    : '카카오톡으로 받으려면 번호를 복사해 나와의 채팅에 붙여넣으세요.';
+  const bot = $('share').dataset.bot;
 
   async function copyNumbers() {
     const text = `${message}\n${pageUrl}`;
@@ -606,17 +608,10 @@ const botUsername = telegram.botUsername;
       document.execCommand('copy');
       area.remove();
     }
-    setStatus('draw-status', '번호를 복사했어요. 카카오톡이나 텔레그램 대화창에 붙여넣으세요.', 'ok');
+    setStatus('draw-status', '번호를 복사했어요. 원하는 대화창에 붙여넣으세요.', 'ok');
   }
 
   $('share-copy').addEventListener('click', copyNumbers);
-  $('share-native').addEventListener('click', async () => {
-    try {
-      await navigator.share({ title: `로또 제${round}회 추천 번호`, text: `${message}\n${pageUrl}` });
-    } catch (err) {
-      if (!err || err.name !== 'AbortError') copyNumbers();
-    }
-  });
 
   // --- start -------------------------------------------------------------
 
