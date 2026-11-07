@@ -11,9 +11,22 @@ import { updateLottoResults } from './lib/lottoResults.js';
 // /admin* is the auto-publish control panel (HTTP Basic Auth, see admin.js).
 // /telegram/webhook receives messages for the lotto bot (see lib/telegram.js).
 // Everything else falls through to the static site build in `dist/` via ASSETS.
+
+// Search engine ownership files. Served here rather than from public/ because
+// static assets redirect /name.html to /name (html_handling), and Google
+// Search Console needs the exact URL to return 200.
+const VERIFICATION_FILES = {
+  '/googlecb2c9ec4e8bd1576.html': 'google-site-verification: googlecb2c9ec4e8bd1576.html',
+};
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
+
+    const verification = VERIFICATION_FILES[url.pathname];
+    if (verification) {
+      return new Response(verification, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+    }
 
     if (url.pathname.startsWith('/admin')) {
       return handleAdmin(request, env);
