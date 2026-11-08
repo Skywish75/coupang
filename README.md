@@ -65,6 +65,7 @@ D1 테이블을 바꿀 때는 `migrations/`에 SQL을 추가하고 `npx wrangler
 ## 검색엔진(SEO)
 
 - 자동 글은 가격 기록 14일 이상 · 최근 3일 안에 기록 있음 · 30일 가격 변동 2배 미만일 때만 검색에 노출합니다(`src/lib/posts.ts`의 `isIndexablePost`). 나머지는 `noindex, follow`이고 사이트맵·RSS에서도 빠집니다. 직접 쓴 글(`aiAssisted: false`)은 항상 노출됩니다.
+- 방문 통계: Cloudflare Web Analytics(계정 → Analytics → Web Analytics → `coupang.tclee.workers.dev`). 스크립트는 `src/layouts/BaseLayout.astro` 맨 아래에 있고, 쿠키를 쓰지 않습니다.
 - 사이트맵 `/sitemap-index.xml`(페이지별 lastmod), RSS `/rss.xml`, `/robots.txt`는 빌드 때 `site` 값으로 만들어집니다. 네이버 서치어드바이저에 사이트맵과 RSS를 제출하세요.
 - 공유 이미지·아이콘(`public/icons/`)은 `node scripts/make-icons.mjs`로 다시 만듭니다(로컬 Mac에서 실행 후 커밋 — 빌드 서버엔 한글 폰트가 없을 수 있음).
 

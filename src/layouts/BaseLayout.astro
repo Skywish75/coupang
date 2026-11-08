@@ -75,5 +75,13 @@ const ld = jsonLd && JSON.stringify(jsonLd).replace(/</g, '\\u003c');
       <slot />
     </main>
     <Footer />
+    {/* Cloudflare Web Analytics (site coupang.tclee.workers.dev): page views
+        and referrers, no cookies. The token is public by design. */}
+    <script
+      is:inline
+      type="module"
+      src="https://static.cloudflareinsights.com/beacon.min.js"
+      data-cf-beacon='{"token": "4273ff92c9b145cb86c394bd9a13acd1"}'
+    ></script>
   </body>
 </html>
