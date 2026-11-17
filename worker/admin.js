@@ -320,8 +320,15 @@ async function renderPage(env, notice, { focus } = {}) {
 </head>
 <body>
   <h1>가격일기 관리자</h1>
-  <nav><a href="#stats">통계</a><a href="#run">지금 실행</a><a href="#threads">스레드</a><a href="#topics">키워드</a><a href="#ads">광고</a><a href="#lotto">로또·텔레그램</a><a href="#logs">로그</a></nav>
+  <nav><a href="#threads">스레드</a><a href="#stats">통계</a><a href="#run">지금 실행</a><a href="#topics">키워드</a><a href="#ads">광고</a><a href="#lotto">로또·텔레그램</a><a href="#logs">로그</a></nav>
   ${notice && !focus ? `<p class="notice">${escapeHtml(notice)}</p>` : ''}
+
+  <!-- First: the button used most, so it isn't confused with 지금 실행 below. -->
+  <section id="threads">
+    <h2>스레드 초안</h2>
+    ${notice && focus === 'threads' ? `<p class="notice">${escapeHtml(notice)}</p>` : ''}
+    ${renderThreads(stats, drafts)}
+  </section>
 
   <section id="stats">
     <h2>통계</h2>
@@ -334,12 +341,6 @@ async function renderPage(env, notice, { focus } = {}) {
     <form method="post" action="/admin/api/run">
       <button type="submit">지금 실행 (가격 데이터 갱신)</button>
     </form>
-  </section>
-
-  <section id="threads">
-    <h2>스레드 초안</h2>
-    ${notice && focus === 'threads' ? `<p class="notice">${escapeHtml(notice)}</p>` : ''}
-    ${renderThreads(stats, drafts)}
   </section>
 
   <section id="topics">
