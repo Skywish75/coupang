@@ -12,15 +12,21 @@ const RETRY_DELAY_MS = 5000;
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-async function callGemini(env, prompt) {
+// With `schema` (an OpenAPI-style object, see responseSchema in the Gemini
+// docs) the reply is JSON text matching it.
+async function callGemini(env, prompt, { schema } = {}) {
   const model = env.GEMINI_MODEL || MODEL_FALLBACK;
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${env.GEMINI_API_KEY}`;
+  const body = { contents: [{ parts: [{ text: prompt }] }] };
+  if (schema) {
+    body.generationConfig = { responseMimeType: 'application/json', responseSchema: schema };
+  }
 
   for (let attempt = 0; ; attempt++) {
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
+      body: JSON.stringify(body),
     });
 
     if (res.ok) {
@@ -56,4 +62,16 @@ export async function generateGuide(env, topic) {
 `;
 
   return callGemini(env, prompt);
+}
+
+// Asks for JSON matching `schema` and parses it. Some models still wrap the
+// JSON in a ```json fence, so that is stripped first.
+export async function generateJson(env, prompt, schema) {
+  const text = await callGemini(env, prompt, { schema });
+  const bare = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+  try {
+    return JSON.parse(bare);
+  } catch {
+    throw new Error(`Gemini returned text that is not JSON: ${bare.slice(0, 120)}`);
+  }
 }

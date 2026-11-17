@@ -3,6 +3,7 @@ import { getTopics, getLogs } from './state.js';
 import { PRICES_PATH, SNAPSHOTS_PATH } from './publish.js';
 import { slugify } from './slug.js';
 import { kstDate, shiftDate } from './dates.js';
+import { threadCandidates } from './threads.js';
 
 // "2026-10-03-캠핑-의자-8410785098.md" -> { date: '2026-10-03', topicSlug: '캠핑-의자' }
 export function parsePostFile(name) {
@@ -57,5 +58,6 @@ export async function getSiteStats(env) {
     comparisonCount: snapshotList.length,
     guideCount: snapshotList.filter(([, s]) => s.hasGuide).length,
     lastRun: logs.find((l) => l.kind !== 'lotto') ?? null, // lotto jobs log too
+    threads: threadCandidates(prices, snapshots),
   };
 }

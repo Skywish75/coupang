@@ -8,6 +8,7 @@ import { slugify } from './lib/slug.js';
 import { shiftDate } from './lib/dates.js';
 import { connectBot, sendWeekly, getTelegramStatus } from './lib/telegram.js';
 import { updateLottoResults } from './lib/lottoResults.js';
+import { getDrafts, createThreadsDraft, candidateLabel, candidateReason, AD_TAG } from './lib/threads.js';
 
 function escapeHtml(str) {
   return String(str).replace(/[&<>"']/g, (c) => ({
@@ -155,16 +156,107 @@ function renderLotto(status) {
     </div>`;
 }
 
+function renderThreads(stats, drafts) {
+  const intro = `
+    <p>사이트에 매일 쌓이는 실제 가격 기록으로 스레드 본글과 댓글 초안을 만듭니다. 올리는 건 직접 하세요.</p>
+    <ul class="help">
+      <li>본글 맨 앞에 <b>${escapeHtml(AD_TAG)}</b>, 마지막 댓글에 가격 비교 페이지 링크와 쿠팡 파트너스 고지 문구가 자동으로 붙습니다. 첫 줄을 다른 후보로 바꿔도 이 표시는 지우지 마세요.</li>
+      <li>가격 글과 링크 없는 정보글을 번갈아 올리면 광고만 하는 계정처럼 보이지 않아요.</li>
+      <li>고른 상품을 직접 써 봤다면 메모를 남기세요. 메모가 없으면 사용 후기 없이 가격 사실과 상황만으로 씁니다.</li>
+    </ul>`;
+  if (stats.error) {
+    return `${intro}<p class="notice">후보를 불러오지 못했습니다: ${escapeHtml(stats.error)}</p>${renderDrafts(drafts)}`;
+  }
+
+  const { deals, units, tips } = stats.value.threads;
+  let n = 0;
+  const radio = (value, label) => {
+    n += 1;
+    return `<td><input type="radio" name="candidate" value="${escapeHtml(value)}" id="tc-${n}" required /></td>
+      <td><label class="plain" for="tc-${n}">${escapeHtml(label)}</label></td>`;
+  };
+  const group = (title, list, empty) =>
+    `<tr class="group"><th colspan="3">${escapeHtml(title)}</th></tr>` +
+    (list.length
+      ? list.map((c) => `<tr>${radio(c.id, candidateLabel(c))}<td>${escapeHtml(candidateReason(c))}</td></tr>`).join('')
+      : `<tr><td colspan="3" class="muted">${escapeHtml(empty)}</td></tr>`);
+  const tipRow = tips.length
+    ? `<tr class="group"><th colspan="3">정보글 (링크 없음)</th></tr>
+       <tr>${radio('tip', '구매 가이드로 정보글')}<td><select name="tipTopic" aria-label="정보글 카테고리">${tips
+         .map((t) => `<option>${escapeHtml(t.topic)}</option>`)
+         .join('')}</select></td></tr>`
+    : '';
+
+  return `${intro}
+    <form method="post" action="/admin/api/threads">
+      <table class="pick">
+        <thead><tr><th></th><th>후보</th><th>근거 (${escapeHtml(stats.value.pricesUpdatedAt ?? '-')} 기록)</th></tr></thead>
+        <tbody>
+          ${group('가격 내린 상품 · 30일 최저가', deals, '오늘은 눈에 띄게 내린 상품이 없어요.')}
+          ${group('단위 가격 차이', units, '오늘은 단위 가격 차이가 큰 카테고리가 없어요.')}
+          ${tipRow}
+        </tbody>
+      </table>
+      <label for="threads-memo">내가 직접 써 본 메모 (선택)</label>
+      <p class="help">얼마나 썼는지, 언제 쓰는지, 좋았던 점, 아쉬운 점. 고른 상품을 실제로 써 봤을 때만 적으세요.</p>
+      <textarea id="threads-memo" name="memo" maxlength="1000"></textarea>
+      <button type="submit">초안 만들기</button> <span class="muted">10~20초 걸려요</span>
+    </form>
+    ${renderDrafts(drafts)}`;
+}
+
+function renderDrafts(drafts) {
+  if (!drafts.length) return '<p class="muted">아직 만든 초안이 없습니다.</p>';
+  // Extra rows for lines that wrap (the link line always does on phones).
+  const rows = (text) => Math.min(18, text.split('\n').length + 3);
+  const box = (id, label, text) => `
+    <div class="draft-box">
+      <div class="draft-head"><span>${escapeHtml(label)}</span><button type="button" class="small" data-copy="${id}">복사</button></div>
+      <textarea id="${id}" rows="${rows(text)}">${escapeHtml(text)}</textarea>
+    </div>`;
+
+  const items = drafts.map((d, i) => {
+    const warnings = d.warnings.length
+      ? `<ul class="warn">${d.warnings.map((w) => `<li>${escapeHtml(w)}</li>`).join('')}</ul>`
+      : '<p class="ok">자동 점검: 고칠 점 없음</p>';
+    const hooks = d.hooks.length
+      ? `<p class="sub">첫 줄 후보 <span class="muted">(본글은 1번으로 시작해요)</span></p>
+         <ol class="hooks">${d.hooks
+           .map((h) => `<li>${escapeHtml(h.text)} <span class="muted">· ${escapeHtml(h.type)} — ${escapeHtml(h.why)}</span></li>`)
+           .join('')}</ol>`
+      : '';
+    const last = d.comments.length - 1;
+    const comments = d.comments
+      .map((c, j) => box(`d-${d.id}-c${j}`, `댓글 ${j + 1}${j === last && d.link ? ' · 링크' : ''}`, c))
+      .join('');
+    const checks = d.checks.length
+      ? `<p class="sub">AI가 짚은 확인할 점</p><ul class="help">${d.checks.map((c) => `<li>${escapeHtml(c)}</li>`).join('')}</ul>`
+      : '';
+    return `
+      <details class="draft"${i === 0 ? ' open' : ''}>
+        <summary>${escapeHtml(kstTime(d.at))} · ${escapeHtml(d.label)}</summary>
+        <p class="muted">${escapeHtml(d.reason)}${d.withMemo ? ' · 사용 메모 반영' : ''}</p>
+        ${warnings}
+        ${hooks}
+        ${box(`d-${d.id}-post`, '본글', d.post)}
+        ${comments}
+        ${checks}
+      </details>`;
+  });
+  return `<h3>최근 초안</h3>${items.join('')}`;
+}
+
 const settle = (promise) => promise.then((value) => ({ value }), (err) => ({ error: err.message }));
 
-async function renderPage(env, notice) {
-  const [topics, logs, ads, stats, clicks, lotto] = await Promise.all([
+async function renderPage(env, notice, { focus } = {}) {
+  const [topics, logs, ads, stats, clicks, lotto, drafts] = await Promise.all([
     getTopics(env),
     getLogs(env),
     getAds(env),
     settle(getSiteStats(env)),
     settle(getClickStats(env)),
     settle(getTelegramStatus(env)),
+    getDrafts(env),
   ]);
 
   const logRows = logs
@@ -207,12 +299,24 @@ async function renderPage(env, notice) {
   .card-label { color: #6b7280; font-size: 0.8rem; }
   .card-value { font-size: 1.5rem; font-weight: 700; font-variant-numeric: tabular-nums; }
   .card-sub { color: #6b7280; font-size: 0.75rem; }
+  table.pick tr.group th { background: #fff7ed; }
+  label.plain { display: inline; font-weight: 400; margin: 0; }
+  details.draft { border: 1px solid #e5e7eb; border-radius: 10px; padding: 0.6rem 0.9rem; margin-top: 0.75rem; }
+  details.draft summary { cursor: pointer; font-weight: 600; }
+  .draft-box { margin-top: 0.75rem; }
+  .draft-head { display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem; font-weight: 600; margin-bottom: 0.25rem; }
+  .draft textarea { height: auto; font-family: inherit; font-size: 0.9rem; line-height: 1.5; }
+  button.small { margin: 0; padding: 0.25rem 0.7rem; font-size: 0.75rem; background: #374151; }
+  ul.warn { background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 0.5rem 0.75rem 0.5rem 1.6rem; font-size: 0.85rem; }
+  .ok { color: #15803d; font-size: 0.85rem; }
+  .sub { font-weight: 600; font-size: 0.85rem; margin: 0.9rem 0 0.25rem; }
+  ol.hooks { font-size: 0.9rem; padding-left: 1.3rem; margin: 0; }
 </style>
 </head>
 <body>
   <h1>가격일기 관리자</h1>
-  <nav><a href="#stats">통계</a><a href="#run">지금 실행</a><a href="#topics">키워드</a><a href="#ads">광고</a><a href="#lotto">로또·텔레그램</a><a href="#logs">로그</a></nav>
-  ${notice ? `<p class="notice">${escapeHtml(notice)}</p>` : ''}
+  <nav><a href="#stats">통계</a><a href="#run">지금 실행</a><a href="#threads">스레드</a><a href="#topics">키워드</a><a href="#ads">광고</a><a href="#lotto">로또·텔레그램</a><a href="#logs">로그</a></nav>
+  ${notice && !focus ? `<p class="notice">${escapeHtml(notice)}</p>` : ''}
 
   <section id="stats">
     <h2>통계</h2>
@@ -225,6 +329,12 @@ async function renderPage(env, notice) {
     <form method="post" action="/admin/api/run">
       <button type="submit">지금 실행 (가격 데이터 갱신)</button>
     </form>
+  </section>
+
+  <section id="threads">
+    <h2>스레드 초안</h2>
+    ${notice && focus === 'threads' ? `<p class="notice">${escapeHtml(notice)}</p>` : ''}
+    ${renderThreads(stats, drafts)}
   </section>
 
   <section id="topics">
@@ -252,6 +362,21 @@ async function renderPage(env, notice) {
       <tbody>${logRows || '<tr><td colspan="4">기록 없음</td></tr>'}</tbody>
     </table>
   </section>
+  <script>
+    document.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-copy]');
+      if (!b) return;
+      const t = document.getElementById(b.dataset.copy);
+      navigator.clipboard.writeText(t.value).then(
+        () => { b.textContent = '복사됨'; setTimeout(() => (b.textContent = '복사'), 1500); },
+        () => t.select()
+      );
+    });
+    document.querySelector('select[name=tipTopic]')?.addEventListener('change', (e) => {
+      e.target.closest('tr').querySelector('input[type=radio]').checked = true;
+    });
+    ${focus ? `document.getElementById(${JSON.stringify(focus)})?.scrollIntoView();` : ''}
+  </script>
 </body>
 </html>`;
 }
@@ -326,6 +451,24 @@ export async function handleAdmin(request, env, ctx) {
     } catch (err) {
       await addLog(env, { status: 'error', reason: err.message });
       return htmlResponse(await renderPage(env, `실행 실패: ${err.message}`), 500);
+    }
+  }
+
+  if (url.pathname === '/admin/api/threads' && request.method === 'POST') {
+    const form = await request.formData();
+    let id = String(form.get('candidate') || '');
+    if (id === 'tip') id = `tip:${String(form.get('tipTopic') || '')}`;
+    try {
+      // Like the run above: keep going (and save to KV) if the browser leaves.
+      const job = createThreadsDraft(env, { id, memo: String(form.get('memo') || ''), origin: url.origin });
+      ctx?.waitUntil(job.catch(() => {}));
+      const draft = await job;
+      const msg =
+        `스레드 초안을 만들었습니다: ${draft.label}` +
+        (draft.warnings.length ? ` · 올리기 전에 고칠 점 ${draft.warnings.length}개` : ' · 자동 점검 통과');
+      return htmlResponse(await renderPage(env, msg, { focus: 'threads' }));
+    } catch (err) {
+      return htmlResponse(await renderPage(env, `초안 만들기 실패: ${err.message}`, { focus: 'threads' }), 500);
     }
   }
 
