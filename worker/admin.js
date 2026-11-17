@@ -240,7 +240,7 @@ function renderDrafts(drafts) {
     return `
       <details class="draft"${i === 0 ? ' open' : ''}>
         <summary>${escapeHtml(kstTime(d.at))} · ${escapeHtml(d.label)}</summary>
-        <p class="muted">${escapeHtml(d.reason)}${d.withMemo ? ' · 사용 메모 반영' : ''}</p>
+        <p class="muted">${escapeHtml(d.reason)}${d.withMemo ? ' · 사용 메모 반영' : ''}${d.model ? ` · ${escapeHtml(d.model)}` : ''}</p>
         ${warnings}
         ${hooks}
         ${box(`d-${d.id}-post`, '본글', d.post)}

@@ -4,6 +4,9 @@
 // check https://ai.google.dev/gemini-api/docs/pricing for which models
 // currently show a free tier and set GEMINI_MODEL in wrangler.toml to match.
 const MODEL_FALLBACK = 'gemini-3.6-flash';
+// Free-tier model tried when the main one answers 503 "high demand" (seen
+// for minutes at a time on gemini-3.6-flash). Override with GEMINI_FALLBACK_MODEL.
+const BUSY_FALLBACK = 'gemini-3.5-flash-lite';
 
 // 503 "high demand" and 429 are usually transient; a couple of spaced-out
 // retries recover most of the runs that used to fail outright.
@@ -20,8 +23,8 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 //   timeoutMs — per attempt; a stalled call fails instead of hanging
 //   retries   — extra attempts after a 429/5xx
 //   maxOutputTokens — hard cap, thinking tokens included
-async function callGemini(env, prompt, { schema, thinking, timeoutMs = 120_000, retries = MAX_RETRIES, maxOutputTokens } = {}) {
-  const model = env.GEMINI_MODEL || MODEL_FALLBACK;
+async function callGemini(env, prompt, { schema, thinking, timeoutMs = 120_000, retries = MAX_RETRIES, maxOutputTokens, model: modelOverride } = {}) {
+  const model = modelOverride || env.GEMINI_MODEL || MODEL_FALLBACK;
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${env.GEMINI_API_KEY}`;
   const body = { contents: [{ parts: [{ text: prompt }] }] };
   const config = {};
@@ -62,7 +65,9 @@ async function callGemini(env, prompt, { schema, thinking, timeoutMs = 120_000, 
 
     const retryable = res.status === 429 || res.status >= 500;
     if (!retryable || attempt >= retries) {
-      throw new Error(`Gemini API failed (${res.status}): ${await res.text()}`);
+      const failed = new Error(`Gemini API failed (${res.status}): ${await res.text()}`);
+      failed.status = res.status;
+      throw failed;
     }
     await sleep(RETRY_DELAY_MS * (attempt + 1));
   }
@@ -87,23 +92,23 @@ export async function generateGuide(env, topic) {
 }
 
 // Plain-text answer for a person waiting on the admin page: low thinking, a
-// token cap, at most 50 seconds and no retry (pressing again is the retry).
-// JSON mode was dropped here: both draft requests made with it got no answer
-// at all (50s and 3m41s). On a timeout a tiny probe call is logged, so
-// `wrangler tail` shows whether the model answers anything right now.
+// token cap and no in-place retry. If the main model is busy (429/503) or
+// silent for 25s, the free lite model gets one try, so the wait stays under
+// a minute. Returns the text and the model that wrote it.
+// (JSON mode was dropped for drafts: both requests made with it got nothing.)
 export async function generateText(env, prompt, options = {}) {
-  const { probeTimeoutMs = 10_000, ...rest } = options;
-  try {
-    return await callGemini(env, prompt, { thinking: 'low', timeoutMs: 50_000, retries: 0, maxOutputTokens: 8192, ...rest });
-  } catch (err) {
-    if (err.timedOut) {
-      const started = Date.now();
-      const probe = await callGemini(env, 'ok라고만 답해.', { thinking: 'low', timeoutMs: probeTimeoutMs, retries: 0, maxOutputTokens: 256 }).then(
-        (text) => `answered "${text.slice(0, 20)}"`,
-        (e) => `failed: ${e.message.slice(0, 120)}`
-      );
-      console.log(`gemini probe after timeout: ${probe} in ${Date.now() - started}ms`);
+  const { timeoutMs = 25_000, ...rest } = options;
+  const models = [env.GEMINI_MODEL || MODEL_FALLBACK, env.GEMINI_FALLBACK_MODEL || BUSY_FALLBACK];
+  const busy = (err) => err.timedOut || err.status === 429 || err.status === 503;
+  for (const [i, model] of models.entries()) {
+    try {
+      const text = await callGemini(env, prompt, { thinking: 'low', maxOutputTokens: 8192, retries: 0, timeoutMs, ...rest, model });
+      return { text, model };
+    } catch (err) {
+      if (!busy(err)) throw err;
+      if (i === models.length - 1) {
+        throw new Error('Gemini가 지금 붐벼서 답하지 못했습니다(기본·예비 모델 모두). 잠시 뒤 다시 눌러 주세요.');
+      }
     }
-    throw err;
   }
 }

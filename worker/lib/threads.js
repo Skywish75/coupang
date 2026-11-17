@@ -437,8 +437,8 @@ export async function createThreadsDraft(env, { id, memo = '', origin }) {
   }
 
   const note = String(memo).trim().slice(0, MAX_MEMO);
-  const raw = parseDraftText(await generateText(env, buildPrompt(c, { memo: note, guide })));
-  const draft = assembleDraft(c, raw, { origin, memo: note });
+  const { text, model } = await generateText(env, buildPrompt(c, { memo: note, guide }));
+  const draft = { ...assembleDraft(c, parseDraftText(text), { origin, memo: note }), model };
   await saveDraft(env, draft);
   return draft;
 }

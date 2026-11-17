@@ -253,6 +253,7 @@ test('a draft is written from live data and kept for the admin page', async () =
   assert.ok(draft.post.startsWith(AD_TAG));
   assert.ok(draft.comments[1].includes(LINK));
   assert.deepEqual(draft.warnings, []);
+  assert.equal(draft.model, 'gemini-3.6-flash');
   assert.equal((await getDrafts(e))[0].id, draft.id);
 });
 
@@ -269,17 +270,41 @@ test('tip drafts read the guide; unknown ids are refused', async () => {
   assert.equal((await getDrafts(e)).length, 1);
 });
 
-test('a Gemini call that never answers fails instead of hanging, then probes', async () => {
+test('a busy or silent model falls back to the lite one, then gives a plain error', async () => {
   const { generateText } = await import('./gemini.js');
-  const prompts = [];
+  const models = [];
+  const modelOf = (input) => String(input).match(/models\/([^:]+):/)[1];
+
+  // main model busy -> lite model answers
+  globalThis.fetch = async (input) => {
+    models.push(modelOf(input));
+    return models.length === 1
+      ? new Response('{"error":{"code":503}}', { status: 503 })
+      : new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: '[본글]\n글\n[댓글1]\n댓글' }] } }] }));
+  };
+  const r = await generateText(env(), 'p');
+  assert.deepEqual(models, ['gemini-3.6-flash', 'gemini-3.5-flash-lite']);
+  assert.equal(r.model, 'gemini-3.5-flash-lite');
+
+  // both silent -> one clear message, well under the time limit
+  models.length = 0;
   globalThis.fetch = (input, init) => {
-    prompts.push(JSON.parse(init.body).contents[0].parts[0].text);
+    models.push(modelOf(input));
     return new Promise((_, reject) => init.signal.addEventListener('abort', () => reject(init.signal.reason)));
   };
   const started = Date.now();
-  await assert.rejects(generateText(env(), 'p', { timeoutMs: 30, probeTimeoutMs: 30 }), /0초 안에 답하지 않았습니다/);
+  await assert.rejects(generateText(env(), 'p', { timeoutMs: 30 }), /붐벼서 답하지 못했습니다/);
   assert.ok(Date.now() - started < 1000);
-  assert.deepEqual(prompts, ['p', 'ok라고만 답해.']);
+  assert.equal(models.length, 2);
+
+  // other errors (bad key, bad request) are not retried
+  models.length = 0;
+  globalThis.fetch = async (input) => {
+    models.push(modelOf(input));
+    return new Response('bad key', { status: 400 });
+  };
+  await assert.rejects(generateText(env(), 'p'), /Gemini API failed \(400\)/);
+  assert.equal(models.length, 1);
 });
 
 test('the marker format is read even when the model decorates it', () => {
