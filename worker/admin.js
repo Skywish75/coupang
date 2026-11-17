@@ -170,9 +170,11 @@ function renderThreads(stats, drafts) {
 
   const { deals, units, tips } = stats.value.threads;
   let n = 0;
+  // The first candidate starts selected: with nothing picked a browser just
+  // shows a small tooltip and sends nothing, which looked like a dead button.
   const radio = (value, label) => {
     n += 1;
-    return `<td><input type="radio" name="candidate" value="${escapeHtml(value)}" id="tc-${n}" required /></td>
+    return `<td><input type="radio" name="candidate" value="${escapeHtml(value)}" id="tc-${n}"${n === 1 ? ' checked' : ''} /></td>
       <td><label class="plain" for="tc-${n}">${escapeHtml(label)}</label></td>`;
   };
   const group = (title, list, empty) =>
@@ -180,6 +182,9 @@ function renderThreads(stats, drafts) {
     (list.length
       ? list.map((c) => `<tr>${radio(c.id, candidateLabel(c))}<td>${escapeHtml(candidateReason(c))}</td></tr>`).join('')
       : `<tr><td colspan="3" class="muted">${escapeHtml(empty)}</td></tr>`);
+  // Built in table order so the first row (the biggest price drop) is the default.
+  const dealRows = group('가격 내린 상품 · 30일 최저가', deals, '오늘은 눈에 띄게 내린 상품이 없어요.');
+  const unitRows = group('단위 가격 차이', units, '오늘은 단위 가격 차이가 큰 카테고리가 없어요.');
   const tipRow = tips.length
     ? `<tr class="group"><th colspan="3">정보글 (링크 없음)</th></tr>
        <tr>${radio('tip', '구매 가이드로 정보글')}<td><select name="tipTopic" aria-label="정보글 카테고리">${tips
@@ -188,12 +193,12 @@ function renderThreads(stats, drafts) {
     : '';
 
   return `${intro}
-    <form method="post" action="/admin/api/threads">
+    <form method="post" action="/admin/api/threads" id="threads-form">
       <table class="pick">
         <thead><tr><th></th><th>후보</th><th>근거 (${escapeHtml(stats.value.pricesUpdatedAt ?? '-')} 기록)</th></tr></thead>
         <tbody>
-          ${group('가격 내린 상품 · 30일 최저가', deals, '오늘은 눈에 띄게 내린 상품이 없어요.')}
-          ${group('단위 가격 차이', units, '오늘은 단위 가격 차이가 큰 카테고리가 없어요.')}
+          ${dealRows}
+          ${unitRows}
           ${tipRow}
         </tbody>
       </table>
@@ -372,6 +377,11 @@ async function renderPage(env, notice, { focus } = {}) {
         () => t.select()
       );
     });
+    document.getElementById('threads-form')?.addEventListener('submit', (e) => {
+      const b = e.target.querySelector('button[type=submit]');
+      b.disabled = true;
+      b.textContent = '만드는 중… 10~20초 걸려요';
+    });
     document.querySelector('select[name=tipTopic]')?.addEventListener('change', (e) => {
       e.target.closest('tr').querySelector('input[type=radio]').checked = true;
     });
@@ -458,16 +468,22 @@ export async function handleAdmin(request, env, ctx) {
     const form = await request.formData();
     let id = String(form.get('candidate') || '');
     if (id === 'tip') id = `tip:${String(form.get('tipTopic') || '')}`;
+    if (!id) {
+      return htmlResponse(await renderPage(env, '후보를 하나 골라 주세요.', { focus: 'threads' }), 400);
+    }
     try {
       // Like the run above: keep going (and save to KV) if the browser leaves.
       const job = createThreadsDraft(env, { id, memo: String(form.get('memo') || ''), origin: url.origin });
       ctx?.waitUntil(job.catch(() => {}));
       const draft = await job;
+      await addLog(env, { kind: 'threads', topic: '스레드 초안', status: 'draft', reason: draft.label });
       const msg =
         `스레드 초안을 만들었습니다: ${draft.label}` +
         (draft.warnings.length ? ` · 올리기 전에 고칠 점 ${draft.warnings.length}개` : ' · 자동 점검 통과');
       return htmlResponse(await renderPage(env, msg, { focus: 'threads' }));
     } catch (err) {
+      console.error('threads draft failed', id, err);
+      await addLog(env, { kind: 'threads', topic: '스레드 초안', status: 'error', reason: `${id} · ${err.message}`.slice(0, 500) });
       return htmlResponse(await renderPage(env, `초안 만들기 실패: ${err.message}`, { focus: 'threads' }), 500);
     }
   }

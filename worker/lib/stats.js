@@ -57,7 +57,8 @@ export async function getSiteStats(env) {
     comparisons: Object.fromEntries(snapshotList),
     comparisonCount: snapshotList.length,
     guideCount: snapshotList.filter(([, s]) => s.hasGuide).length,
-    lastRun: logs.find((l) => l.kind !== 'lotto') ?? null, // lotto jobs log too
+    // Lotto jobs and Threads drafts log too; only price runs count here.
+    lastRun: logs.find((l) => l.kind !== 'lotto' && l.kind !== 'threads') ?? null,
     threads: threadCandidates(prices, snapshots),
   };
 }
