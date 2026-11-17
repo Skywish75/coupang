@@ -19,13 +19,15 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 //               which made one admin draft wait over 3 minutes.
 //   timeoutMs — per attempt; a stalled call fails instead of hanging
 //   retries   — extra attempts after a 429/5xx
-async function callGemini(env, prompt, { schema, thinking, timeoutMs = 120_000, retries = MAX_RETRIES } = {}) {
+//   maxOutputTokens — hard cap, thinking tokens included
+async function callGemini(env, prompt, { schema, thinking, timeoutMs = 120_000, retries = MAX_RETRIES, maxOutputTokens } = {}) {
   const model = env.GEMINI_MODEL || MODEL_FALLBACK;
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${env.GEMINI_API_KEY}`;
   const body = { contents: [{ parts: [{ text: prompt }] }] };
   const config = {};
   if (schema) Object.assign(config, { responseMimeType: 'application/json', responseSchema: schema });
   if (thinking) config.thinkingConfig = { thinkingLevel: thinking };
+  if (maxOutputTokens) config.maxOutputTokens = maxOutputTokens;
   if (Object.keys(config).length) body.generationConfig = config;
 
   for (let attempt = 0; ; attempt++) {
@@ -41,7 +43,9 @@ async function callGemini(env, prompt, { schema, thinking, timeoutMs = 120_000, 
     } catch (err) {
       if (err?.name === 'TimeoutError' || err?.name === 'AbortError') {
         console.log(`gemini ${model} attempt ${attempt + 1}: no answer in ${timeoutMs}ms`);
-        throw new Error(`Gemini가 ${Math.round(timeoutMs / 1000)}초 안에 답하지 않았습니다. 잠시 뒤 다시 시도해 주세요.`);
+        const timeout = new Error(`Gemini가 ${Math.round(timeoutMs / 1000)}초 안에 답하지 않았습니다. 잠시 뒤 다시 시도해 주세요.`);
+        timeout.timedOut = true;
+        throw timeout;
       }
       throw err;
     }
@@ -82,16 +86,24 @@ export async function generateGuide(env, topic) {
   return callGemini(env, prompt);
 }
 
-// Asks for JSON matching `schema` and parses it. Some models still wrap the
-// JSON in a ```json fence, so that is stripped first.
-// Defaults suit a person waiting on the admin page: low thinking, at most
-// 50 seconds, no retry (pressing the button again is the retry).
-export async function generateJson(env, prompt, schema, options = {}) {
-  const text = await callGemini(env, prompt, { schema, thinking: 'low', timeoutMs: 50_000, retries: 0, ...options });
-  const bare = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+// Plain-text answer for a person waiting on the admin page: low thinking, a
+// token cap, at most 50 seconds and no retry (pressing again is the retry).
+// JSON mode was dropped here: both draft requests made with it got no answer
+// at all (50s and 3m41s). On a timeout a tiny probe call is logged, so
+// `wrangler tail` shows whether the model answers anything right now.
+export async function generateText(env, prompt, options = {}) {
+  const { probeTimeoutMs = 10_000, ...rest } = options;
   try {
-    return JSON.parse(bare);
-  } catch {
-    throw new Error(`Gemini returned text that is not JSON: ${bare.slice(0, 120)}`);
+    return await callGemini(env, prompt, { thinking: 'low', timeoutMs: 50_000, retries: 0, maxOutputTokens: 8192, ...rest });
+  } catch (err) {
+    if (err.timedOut) {
+      const started = Date.now();
+      const probe = await callGemini(env, 'ok라고만 답해.', { thinking: 'low', timeoutMs: probeTimeoutMs, retries: 0, maxOutputTokens: 256 }).then(
+        (text) => `answered "${text.slice(0, 20)}"`,
+        (e) => `failed: ${e.message.slice(0, 120)}`
+      );
+      console.log(`gemini probe after timeout: ${probe} in ${Date.now() - started}ms`);
+    }
+    throw err;
   }
 }

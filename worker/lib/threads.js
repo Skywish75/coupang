@@ -3,7 +3,7 @@ import { unitKindsForTopic, unitPrice, formatUnitPrice, formatQuantity } from '.
 import { shortProductName } from '../../src/lib/names.js';
 import { slugify } from './slug.js';
 import { getFileContent, getJsonFile } from './github.js';
-import { generateJson } from './gemini.js';
+import { generateText } from './gemini.js';
 import { PRICES_PATH, SNAPSHOTS_PATH } from './publish.js';
 
 // Threads (threads.com) post drafts for the admin page, built from the prices
@@ -159,24 +159,6 @@ function factLines(c) {
   return lines;
 }
 
-export const DRAFT_SCHEMA = {
-  type: 'OBJECT',
-  properties: {
-    hooks: {
-      type: 'ARRAY',
-      items: {
-        type: 'OBJECT',
-        properties: { text: { type: 'STRING' }, type: { type: 'STRING' }, why: { type: 'STRING' } },
-        required: ['text', 'type', 'why'],
-      },
-    },
-    post: { type: 'STRING' },
-    comments: { type: 'ARRAY', items: { type: 'STRING' } },
-    checks: { type: 'ARRAY', items: { type: 'STRING' } },
-  },
-  required: ['hooks', 'post', 'comments', 'checks'],
-};
-
 export function buildPrompt(c, { memo = '', guide = '' } = {}) {
   const memoRule = memo
     ? `[내 사용 메모]에 적힌 경험만 써. 메모에 아쉬운 점이 있으면 숨기지 말고 댓글에 담백하게 넣어. 메모에 없는 경험·효과는 보태지 마.`
@@ -184,18 +166,26 @@ export function buildPrompt(c, { memo = '', guide = '' } = {}) {
 
   const common = `말투와 형식
 - 친구한테 툭 던지듯 반말로. 광고 카피처럼 쓰지 마.
-- 한 줄은 40자 안쪽에서 줄바꿈(\\n).
+- 한 줄은 40자 안쪽에서 줄을 바꿔.
 - "강추", "인생템", "무조건", "역대급", "꿀템", "필수템", "나만 몰랐던" 같은 말은 쓰지 마.
 - 아래 자료에 없는 숫자, 효과, 성능, 다른 상품보다 낫다는 비교는 지어내지 마.
 - ${memoRule}
 
-첫 줄 후보 hooks 3개
+첫 줄 후보 [첫줄1]~[첫줄3]
 - 상품명, 브랜드, 가격, "추천"은 넣지 마. 실제로 겪을 법한 불편한 순간으로 시작해.
-- type은 반전형(예상을 뒤집음), 질문형(물음표로 끝남), 고백형(내 얘기를 털어놓음) 중 그 문장 구조에 실제로 맞는 것 하나. 유형을 골고루 맞추려고 억지로 붙이지 마.
-- why에는 그 줄에서 스크롤이 멈추는 이유를 한 줄로.`;
+- 유형은 반전형(예상을 뒤집음), 질문형(물음표로 끝남), 고백형(내 얘기를 털어놓음) 중 그 문장 구조에 실제로 맞는 것 하나. 유형을 골고루 맞추려고 억지로 붙이지 마.
+- 이유에는 그 줄에서 스크롤이 멈추는 이유를 한 줄로.`;
 
-  const output = `출력은 JSON만: {"hooks":[{"text":"","type":"","why":""}],"post":"","comments":[""],"checks":[""]}
-checks에는 올리기 전에 사람이 직접 확인할 점 1~3개(근거가 약한 표현, 바뀌기 쉬운 정보 등).`;
+  // Plain text with markers, not JSON: see generateText in gemini.js.
+  const output = (n) => `출력 형식 (이 형식 그대로, 앞뒤에 다른 말 없이):
+[첫줄1] 문장 || 유형 || 이유
+[첫줄2] 문장 || 유형 || 이유
+[첫줄3] 문장 || 유형 || 이유
+[본글]
+(본글 여러 줄)
+${Array.from({ length: n }, (_, i) => `[댓글${i + 1}]\n(댓글 ${i + 1})`).join('\n')}
+[점검]
+- 올리기 전에 사람이 직접 확인할 점 1~3개(근거가 약한 표현, 바뀌기 쉬운 정보 등)`;
 
   if (c.kind === 'tip') {
     return `너는 쿠팡 생활용품 가격을 매일 기록하는 사이트 "가격일기"의 스레드(Threads) 계정 글을 쓰는 사람이야.
@@ -210,27 +200,27 @@ ${memo || '(없음)'}
 
 ${common}
 
-본글 post
-- hooks[0].text로 시작해.
+본글 쓰는 법
+- [첫줄1] 문장으로 시작해.
 - ${c.topic}를 고를 때 헷갈리거나 잘못 사서 아쉬운 장면 하나(언제·어디서·누가)를 3~5줄로 보여 주고 궁금증을 남긴 채 끝내.
 
-댓글 comments 정확히 2개
-- 댓글 1: [가이드]의 기준 중 1~2개만 골라 그 장면과 엮어서 설명해. 끝 문장은 다음 댓글이 궁금하게.
-- 댓글 2: 한눈에 정리 2~3줄, 마지막 줄은 "다음 편:"으로 시작하는 예고 한 줄(다음에 다룰 생활용품 이야기).
+댓글 정확히 2개
+- [댓글1]: [가이드]의 기준 중 1~2개만 골라 그 장면과 엮어서 설명해. 끝 문장은 다음 댓글이 궁금하게.
+- [댓글2]: 한눈에 정리 2~3줄, 마지막 줄은 "다음 편:"으로 시작하는 예고 한 줄(다음에 다룰 생활용품 이야기).
 
-${output}`;
+${output(2)}`;
   }
 
   const n = c.kind === 'unit' ? 3 : 2;
   const commentRules =
     c.kind === 'unit'
-      ? `댓글 comments 정확히 3개
-- 댓글 1: 본글의 궁금증에 먼저 답해. 같은 ${c.topic}인데 ${c.unit.label} 가격이 몇 배 차이 난다는 사실을 여기서 처음 꺼내.
-- 댓글 2: 단위 가격 보는 법(판매가 ÷ 수량)과 가장 싼 것·가장 비싼 것의 ${c.unit.label} 가격. 끝 문장은 다음 댓글이 궁금하게.
-- 댓글 3(마지막): 지금 확인해 볼 이유를 [사실] 하나로 말하고, 링크 자리에 ${LINK_SLOT}를 정확히 한 번 써.`
-      : `댓글 comments 정확히 2개
-- 댓글 1: 본글의 궁금증에 먼저 답하고, [사실]의 가격 이야기를 여기서 처음 꺼내. 끝 문장은 다음 댓글이 궁금하게.
-- 댓글 2(마지막): 지금 확인해 볼 이유를 [사실] 하나로 말하고, 링크 자리에 ${LINK_SLOT}를 정확히 한 번 써.`;
+      ? `댓글 정확히 3개
+- [댓글1]: 본글의 궁금증에 먼저 답해. 같은 ${c.topic}인데 ${c.unit.label} 가격이 몇 배 차이 난다는 사실을 여기서 처음 꺼내.
+- [댓글2]: 단위 가격 보는 법(판매가 ÷ 수량)과 가장 싼 것·가장 비싼 것의 ${c.unit.label} 가격. 끝 문장은 다음 댓글이 궁금하게.
+- [댓글3](마지막): 지금 확인해 볼 이유를 [사실] 하나로 말하고, 링크 자리에 ${LINK_SLOT}를 정확히 한 번 써.`
+      : `댓글 정확히 2개
+- [댓글1]: 본글의 궁금증에 먼저 답하고, [사실]의 가격 이야기를 여기서 처음 꺼내. 끝 문장은 다음 댓글이 궁금하게.
+- [댓글2](마지막): 지금 확인해 볼 이유를 [사실] 하나로 말하고, 링크 자리에 ${LINK_SLOT}를 정확히 한 번 써.`;
 
   return `너는 쿠팡 생활용품 가격을 매일 기록하는 사이트 "가격일기"의 스레드(Threads) 계정 글을 쓰는 사람이야.
 아래 [사실]로 스레드 본글 1개와 댓글 ${n}개 초안을 써 줘. 링크는 이 사이트의 가격 비교 페이지(30일 가격 기록)로 가.
@@ -243,8 +233,8 @@ ${memo || '(없음)'}
 
 ${common}
 
-본글 post
-- hooks[0].text로 시작해.
+본글 쓰는 법
+- [첫줄1] 문장으로 시작해.
 - 이게 아쉬운 일상 장면 1~2개를 언제·어디서·누가 보이게, 짜증나고 귀찮은 순간 위주로 써.
 - 상품 이름, 브랜드, 가격, 숫자, 할인율은 본글에 쓰지 마. 궁금증을 남긴 채 끝내. 5~9줄.
 
@@ -252,7 +242,51 @@ ${commentRules}
 - "사세요", "둘러보세요", "구매하세요" 대신 왜 지금 보면 좋은지를 말해.
 - 가격은 금방 바뀌니까 단정하지 말고 "오늘 기준"처럼 날짜 기준을 붙여.
 
-${output}`;
+${output(n)}`;
+}
+
+// Reads the marker format the prompt asks for into the shape assembleDraft
+// takes. Tolerates bold/heading marks around a marker, a hook on the line
+// after its marker, and a code fence around the whole answer.
+const MARKER = /^[\s#*]*\[(첫\s?줄\s?\d|본\s?글|댓글\s?\d+|점\s?검)\][*\s]*(.*)$/;
+
+export function parseDraftText(text) {
+  const blocks = new Map();
+  let current = null;
+  for (const line of String(text).replace(/\r/g, '').split('\n')) {
+    if (/^\s*```/.test(line)) continue;
+    const m = line.match(MARKER);
+    if (m) {
+      current = m[1].replace(/\s/g, '');
+      blocks.set(current, m[2] ? [m[2]] : []);
+    } else if (current) {
+      blocks.get(current).push(line);
+    }
+  }
+  const get = (key) => (blocks.get(key) ?? []).join('\n').trim();
+  const keys = [...blocks.keys()];
+  const numbered = (prefix) =>
+    keys.filter((k) => k.startsWith(prefix)).sort((a, b) => Number(a.slice(2)) - Number(b.slice(2)));
+
+  const hooks = numbered('첫줄')
+    .map((k) => {
+      const [hook = '', type = '', why = ''] = get(k).replace(/\n+/g, ' ').split('||').map((x) => x.trim());
+      return { text: hook, type, why };
+    })
+    .filter((h) => h.text);
+  const draft = {
+    hooks,
+    post: get('본글'),
+    comments: numbered('댓글').map(get).filter(Boolean),
+    checks: get('점검')
+      .split('\n')
+      .map((l) => l.replace(/^\s*[-•*]\s*/, '').trim())
+      .filter(Boolean),
+  };
+  if (!draft.post || !draft.comments.length) {
+    throw new Error(`Gemini 답이 정해진 형식이 아니었습니다: ${String(text).slice(0, 80)}`);
+  }
+  return draft;
 }
 
 // Address of the product's row on its compare page. Percent-encoded so the
@@ -403,7 +437,7 @@ export async function createThreadsDraft(env, { id, memo = '', origin }) {
   }
 
   const note = String(memo).trim().slice(0, MAX_MEMO);
-  const raw = await generateJson(env, buildPrompt(c, { memo: note, guide }), DRAFT_SCHEMA);
+  const raw = parseDraftText(await generateText(env, buildPrompt(c, { memo: note, guide })));
   const draft = assembleDraft(c, raw, { origin, memo: note });
   await saveDraft(env, draft);
   return draft;

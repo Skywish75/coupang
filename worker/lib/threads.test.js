@@ -4,6 +4,7 @@ import {
   threadCandidates,
   candidateReason,
   buildPrompt,
+  parseDraftText,
   assembleDraft,
   lintDraft,
   createThreadsDraft,
@@ -203,12 +204,19 @@ function memoryKV() {
 
 beforeEach(() => {
   geminiBodies = [];
-  geminiReply = {
-    hooks: [{ text: '물 떨어진 거 밤에 알았어', type: '반전형', why: '공감' }],
-    post: '물 떨어진 거 밤에 알았어\n또 편의점 가야 해',
-    comments: ['요즘 값이 내려갔더라', '지금이 30일 중 제일 낮아\n[링크]'],
-    checks: ['가격 다시 확인'],
-  };
+  geminiReply = [
+    '[첫줄1] 물 떨어진 거 밤에 알았어 || 반전형 || 공감',
+    '[본글]',
+    '물 떨어진 거 밤에 알았어',
+    '또 편의점 가야 해',
+    '[댓글1]',
+    '요즘 값이 내려갔더라',
+    '[댓글2]',
+    '지금이 30일 중 제일 낮아',
+    '[링크]',
+    '[점검]',
+    '- 가격 다시 확인',
+  ].join('\n');
   const { prices, snapshots } = fixture();
   const files = {
     'data/priceHistory.json': JSON.stringify(prices),
@@ -223,7 +231,7 @@ beforeEach(() => {
     }
     if (url.host === 'generativelanguage.googleapis.com') {
       geminiBodies.push(JSON.parse(init.body));
-      const text = '```json\n' + JSON.stringify(geminiReply) + '\n```';
+      const text = geminiReply;
       return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text }] } }] }));
     }
     throw new Error(`unexpected fetch ${url}`);
@@ -237,8 +245,10 @@ test('a draft is written from live data and kept for the admin page', async () =
   const draft = await createThreadsDraft(e, { id: 'deal:1-1', memo: '', origin: ORIGIN });
 
   assert.equal(geminiBodies.length, 1);
-  assert.equal(geminiBodies[0].generationConfig.responseMimeType, 'application/json');
-  assert.equal(geminiBodies[0].generationConfig.thinkingConfig.thinkingLevel, 'low');
+  const config = geminiBodies[0].generationConfig;
+  assert.equal(config.thinkingConfig.thinkingLevel, 'low');
+  assert.equal(config.maxOutputTokens, 8192);
+  assert.equal(config.responseMimeType, undefined, 'no JSON mode');
   assert.ok(geminiBodies[0].contents[0].parts[0].text.includes('9,000원'));
   assert.ok(draft.post.startsWith(AD_TAG));
   assert.ok(draft.comments[1].includes(LINK));
@@ -248,7 +258,7 @@ test('a draft is written from live data and kept for the admin page', async () =
 
 test('tip drafts read the guide; unknown ids are refused', async () => {
   const e = env();
-  geminiReply = { hooks: [], post: '생수 살 때', comments: ['용량부터', '다음 편: 세제'], checks: [] };
+  geminiReply = '[본글]\n생수 살 때\n[댓글1]\n용량부터\n[댓글2]\n다음 편: 세제';
   await createThreadsDraft(e, { id: 'tip:생수', origin: ORIGIN });
   const prompt = geminiBodies[0].contents[0].parts[0].text;
   assert.ok(prompt.includes('마시는 속도에 맞춰 고르기'));
@@ -259,11 +269,44 @@ test('tip drafts read the guide; unknown ids are refused', async () => {
   assert.equal((await getDrafts(e)).length, 1);
 });
 
-test('a Gemini call that never answers fails instead of hanging', async () => {
-  const { generateJson } = await import('./gemini.js');
-  globalThis.fetch = (input, init) =>
-    new Promise((_, reject) => init.signal.addEventListener('abort', () => reject(init.signal.reason)));
+test('a Gemini call that never answers fails instead of hanging, then probes', async () => {
+  const { generateText } = await import('./gemini.js');
+  const prompts = [];
+  globalThis.fetch = (input, init) => {
+    prompts.push(JSON.parse(init.body).contents[0].parts[0].text);
+    return new Promise((_, reject) => init.signal.addEventListener('abort', () => reject(init.signal.reason)));
+  };
   const started = Date.now();
-  await assert.rejects(generateJson(env(), 'p', {}, { timeoutMs: 30 }), /0초 안에 답하지 않았습니다/);
+  await assert.rejects(generateText(env(), 'p', { timeoutMs: 30, probeTimeoutMs: 30 }), /0초 안에 답하지 않았습니다/);
   assert.ok(Date.now() - started < 1000);
+  assert.deepEqual(prompts, ['p', 'ok라고만 답해.']);
+});
+
+test('the marker format is read even when the model decorates it', () => {
+  const d = parseDraftText([
+    '```',
+    '**[첫줄1]** 물 또 떨어졌어? || 질문형 || 누구나 겪음',
+    '[첫줄2]',
+    '사 놓으면 금방 없어지더라 || 반전형',
+    '## [본글]',
+    '물 또 떨어졌어?',
+    '',
+    '편의점까지 또 나가야 해',
+    '[댓글2]',
+    '두 번째',
+    '[댓글1]',
+    '첫 번째',
+    '[점검]',
+    '- 가격 확인',
+    '• 용량 확인',
+    '```',
+  ].join('\n'));
+  assert.deepEqual(d.hooks, [
+    { text: '물 또 떨어졌어?', type: '질문형', why: '누구나 겪음' },
+    { text: '사 놓으면 금방 없어지더라', type: '반전형', why: '' },
+  ]);
+  assert.equal(d.post, '물 또 떨어졌어?\n\n편의점까지 또 나가야 해');
+  assert.deepEqual(d.comments, ['첫 번째', '두 번째']);
+  assert.deepEqual(d.checks, ['가격 확인', '용량 확인']);
+  assert.throws(() => parseDraftText('그냥 아무 말'), /정해진 형식이 아니었습니다/);
 });
