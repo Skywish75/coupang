@@ -12,22 +12,40 @@ const RETRY_DELAY_MS = 5000;
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// With `schema` (an OpenAPI-style object, see responseSchema in the Gemini
-// docs) the reply is JSON text matching it.
-async function callGemini(env, prompt, { schema } = {}) {
+// Options:
+//   schema    — an OpenAPI-style object (responseSchema in the Gemini docs);
+//               the reply is then JSON text matching it
+//   thinking  — 'low' | 'high' thinkingLevel. Gemini 3 defaults to high,
+//               which made one admin draft wait over 3 minutes.
+//   timeoutMs — per attempt; a stalled call fails instead of hanging
+//   retries   — extra attempts after a 429/5xx
+async function callGemini(env, prompt, { schema, thinking, timeoutMs = 120_000, retries = MAX_RETRIES } = {}) {
   const model = env.GEMINI_MODEL || MODEL_FALLBACK;
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${env.GEMINI_API_KEY}`;
   const body = { contents: [{ parts: [{ text: prompt }] }] };
-  if (schema) {
-    body.generationConfig = { responseMimeType: 'application/json', responseSchema: schema };
-  }
+  const config = {};
+  if (schema) Object.assign(config, { responseMimeType: 'application/json', responseSchema: schema });
+  if (thinking) config.thinkingConfig = { thinkingLevel: thinking };
+  if (Object.keys(config).length) body.generationConfig = config;
 
   for (let attempt = 0; ; attempt++) {
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
+    const started = Date.now();
+    let res;
+    try {
+      res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+    } catch (err) {
+      if (err?.name === 'TimeoutError' || err?.name === 'AbortError') {
+        console.log(`gemini ${model} attempt ${attempt + 1}: no answer in ${timeoutMs}ms`);
+        throw new Error(`Gemini가 ${Math.round(timeoutMs / 1000)}초 안에 답하지 않았습니다. 잠시 뒤 다시 시도해 주세요.`);
+      }
+      throw err;
+    }
+    console.log(`gemini ${model} attempt ${attempt + 1}: ${res.status} in ${Date.now() - started}ms`);
 
     if (res.ok) {
       const json = await res.json();
@@ -39,7 +57,7 @@ async function callGemini(env, prompt, { schema } = {}) {
     }
 
     const retryable = res.status === 429 || res.status >= 500;
-    if (!retryable || attempt >= MAX_RETRIES) {
+    if (!retryable || attempt >= retries) {
       throw new Error(`Gemini API failed (${res.status}): ${await res.text()}`);
     }
     await sleep(RETRY_DELAY_MS * (attempt + 1));
@@ -66,8 +84,10 @@ export async function generateGuide(env, topic) {
 
 // Asks for JSON matching `schema` and parses it. Some models still wrap the
 // JSON in a ```json fence, so that is stripped first.
-export async function generateJson(env, prompt, schema) {
-  const text = await callGemini(env, prompt, { schema });
+// Defaults suit a person waiting on the admin page: low thinking, at most
+// 50 seconds, no retry (pressing the button again is the retry).
+export async function generateJson(env, prompt, schema, options = {}) {
+  const text = await callGemini(env, prompt, { schema, thinking: 'low', timeoutMs: 50_000, retries: 0, ...options });
   const bare = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
   try {
     return JSON.parse(bare);

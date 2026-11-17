@@ -238,6 +238,7 @@ test('a draft is written from live data and kept for the admin page', async () =
 
   assert.equal(geminiBodies.length, 1);
   assert.equal(geminiBodies[0].generationConfig.responseMimeType, 'application/json');
+  assert.equal(geminiBodies[0].generationConfig.thinkingConfig.thinkingLevel, 'low');
   assert.ok(geminiBodies[0].contents[0].parts[0].text.includes('9,000원'));
   assert.ok(draft.post.startsWith(AD_TAG));
   assert.ok(draft.comments[1].includes(LINK));
@@ -256,4 +257,13 @@ test('tip drafts read the guide; unknown ids are refused', async () => {
   await assert.rejects(createThreadsDraft(e, { id: 'deal:9-9', origin: ORIGIN }), /후보를 찾지 못했습니다/);
   await assert.rejects(createThreadsDraft(e, { id: 'deal:5-1', origin: ORIGIN }), /후보를 찾지 못했습니다/, 'stale topic');
   assert.equal((await getDrafts(e)).length, 1);
+});
+
+test('a Gemini call that never answers fails instead of hanging', async () => {
+  const { generateJson } = await import('./gemini.js');
+  globalThis.fetch = (input, init) =>
+    new Promise((_, reject) => init.signal.addEventListener('abort', () => reject(init.signal.reason)));
+  const started = Date.now();
+  await assert.rejects(generateJson(env(), 'p', {}, { timeoutMs: 30 }), /0초 안에 답하지 않았습니다/);
+  assert.ok(Date.now() - started < 1000);
 });
